@@ -56,9 +56,14 @@ export const AppDataSource = new DataSource({
   migrationsTransactionMode: 'each',
   namingStrategy: {
     name: 'snakeCase',
-    tableName: (targetName: string) => `${targetName.toLowerCase()}`,
-    columnName: (_propertyName: string, derivedColumnName: string) => {
-      const words = derivedColumnName.split('');
+    tableName: (targetName: any, userSpecifiedName?: string) => {
+      if (userSpecifiedName) return userSpecifiedName;
+      const name = typeof targetName === 'string' ? targetName : targetName.name;
+      return name.toLowerCase();
+    },
+    columnName: (propertyName: string, customName: string) => {
+      const name = customName || propertyName;
+      const words = name.split('');
       return words
         .map((word, index) => {
           if (index === 0) return word.toLowerCase();
@@ -70,23 +75,38 @@ export const AppDataSource = new DataSource({
     classTableInheritanceParentColumnName: (parentTableName: string, propertyName: string) =>
       `${parentTableName}_${propertyName}`,
     foreignKeyName: (
-      tableOrName: string,
+      tableOrName: any,
       columnNames: string[],
-      referencedTableName?: string,
+      referencedTableName?: any,
       referencedColumnNames?: string[]
-    ) =>
-      `fk_${tableOrName.toLowerCase()}_${columnNames.join('_').toLowerCase()}_${referencedTableName?.toLowerCase()}`,
-    primaryKeyName: (tableOrName: string, columnNames: string[]) =>
-      `pk_${tableOrName.toLowerCase()}_${columnNames.join('_').toLowerCase()}`,
-    uniqueConstraintName: (tableOrName: string, columnNames: string[]) =>
-      `uq_${tableOrName.toLowerCase()}_${columnNames.join('_').toLowerCase()}`,
+    ) => {
+      const tbName = typeof tableOrName === 'string' ? tableOrName : tableOrName.name;
+      const refName = referencedTableName ? (typeof referencedTableName === 'string' ? referencedTableName : referencedTableName.name) : 'ref';
+      return `fk_${tbName.toLowerCase()}_${columnNames.join('_').toLowerCase()}_${refName.toLowerCase()}`;
+    },
+    primaryKeyName: (tableOrName: any, columnNames: string[]) => {
+      const tbName = typeof tableOrName === 'string' ? tableOrName : tableOrName.name;
+      return `pk_${tbName.toLowerCase()}_${columnNames.join('_').toLowerCase()}`;
+    },
+    uniqueConstraintName: (tableOrName: any, columnNames: string[]) => {
+      const tbName = typeof tableOrName === 'string' ? tableOrName : tableOrName.name;
+      return `uq_${tbName.toLowerCase()}_${columnNames.join('_').toLowerCase()}`;
+    },
     relationName: (propertyName: string) => propertyName,
-    indexName: (tableOrName: string, columnNames: string[]) =>
-      `idx_${tableOrName.toLowerCase()}_${columnNames.join('_').toLowerCase()}`,
-    checkConstraintName: (tableOrName: string, columnNames: string[]) =>
-      `chk_${tableOrName.toLowerCase()}_${columnNames.join('_').toLowerCase()}`,
-    exclusionConstraintName: (tableOrName: string, columnNames: string[]) =>
-      `exl_${tableOrName.toLowerCase()}_${columnNames.join('_').toLowerCase()}`,
+    indexName: (tableOrName: any, columnNames: string[]) => {
+      const tbName = typeof tableOrName === 'string' ? tableOrName : tableOrName.name;
+      return `idx_${tbName.toLowerCase()}_${columnNames.join('_').toLowerCase()}`;
+    },
+    checkConstraintName: (tableOrName: any, expression: any) => {
+      const tbName = typeof tableOrName === 'string' ? tableOrName : tableOrName.name;
+      const suffix = Array.isArray(expression) ? expression.join('_').toLowerCase() : 'chk';
+      return `chk_${tbName.toLowerCase()}_${suffix}`;
+    },
+    exclusionConstraintName: (tableOrName: any, expression: any) => {
+      const tbName = typeof tableOrName === 'string' ? tableOrName : tableOrName.name;
+      const suffix = Array.isArray(expression) ? expression.join('_').toLowerCase() : 'excl';
+      return `exl_${tbName.toLowerCase()}_${suffix}`;
+    },
   } as any,
 });
 

@@ -11,7 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Book } from './Book';
 
 @Entity('embeddings')
-@Index(['book_id'])
+@Index(['bookId'])
 export class Embedding {
   @PrimaryColumn('uuid')
   id: string = uuidv4();

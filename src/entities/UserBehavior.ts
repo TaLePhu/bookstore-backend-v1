@@ -20,7 +20,7 @@ export enum BehaviorType {
 }
 
 @Entity('user_behaviors')
-@Index(['user_id', 'created_at'])
+@Index(['userId', 'createdAt'])
 export class UserBehavior {
   @PrimaryColumn('uuid')
   id: string = uuidv4();

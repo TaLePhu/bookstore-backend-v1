@@ -7,8 +7,10 @@ export class EnablePgvectorExtension1710000000001 implements MigrationInterface 
 
     // Alter embeddings table to use vector type
     await queryRunner.query(`
-      ALTER TABLE embeddings
-      ADD COLUMN IF NOT EXISTS vector vector(1536);
+      ALTER TABLE embeddings DROP COLUMN IF EXISTS vector;
+    `);
+    await queryRunner.query(`
+      ALTER TABLE embeddings ADD COLUMN vector vector(1536);
     `);
 
     // Create index for vector similarity search

@@ -12,7 +12,7 @@ import { Cart } from './Cart';
 import { Book } from './Book';
 
 @Entity('cart_items')
-@Index(['cart_id', 'book_id'], { unique: true })
+@Index(['cartId', 'bookId'], { unique: true })
 export class CartItem {
   @PrimaryColumn('uuid')
   id: string = uuidv4();

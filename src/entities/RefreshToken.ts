@@ -12,7 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { User } from './User';
 
 @Entity('refresh_tokens')
-@Index(['user_id', 'created_at'])
+@Index(['userId', 'createdAt'])
 export class RefreshToken {
   @PrimaryColumn('uuid')
   id: string = uuidv4();
