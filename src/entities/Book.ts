@@ -37,8 +37,8 @@ export class Book {
   @Column('integer')
   stock: number;
 
-  @Column('varchar', { length: 20, unique: true })
-  ISBN: string;
+  @Column('varchar', { name: 'isbn', length: 20, unique: true })
+  isbn: string;
 
   @CreateDateColumn()
   createdAt: Date;
