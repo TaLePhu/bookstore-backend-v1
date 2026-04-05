@@ -1,7 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { container } from 'tsyringe';
 import { BookService } from '@services/BookService';
-import { validate as isUUID } from 'uuid';
 
 export class BookController {
   static async getAllBooks(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -30,7 +29,9 @@ export class BookController {
     try {
       const { id } = req.params;
       
-      if (!isUUID(id)) {
+      // Sử dụng Regex cơ bản thay vì thư viện 'uuid' vì Postgres cho phép các định dạng UUID linh hoạt hơn (không nhất thiết phải chuẩn RFC 4122)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(id)) {
         res.status(400).json({
           success: false,
           message: 'Lỗi: ID không đúng định dạng UUID.'
