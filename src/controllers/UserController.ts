@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { injectable, inject } from 'tsyringe';
 import { UserService } from '@services/UserService';
 import { UpdateProfileDto } from '@dtos/user/UpdateProfileDto';
+import { ChangePasswordDto } from '@dtos/user/ChangePasswordDto';
 import { sendSuccess, sendError } from '@utils/response';
 import { asyncWrapper } from '@utils/async-wrapper';
 
@@ -26,5 +27,15 @@ export class UserController {
     const updateDto: UpdateProfileDto = req.body;
     const profile = await this.userService.updateProfile(userId, updateDto);
     return sendSuccess(res, profile, 'Profile updated successfully');
+  });
+
+  changePassword = asyncWrapper(async (req: Request, res: Response) => {
+    const userId = (req as any).user?.userId;
+    if (!userId) {
+      return sendError(res, 'Unauthorized', 401);
+    }
+    const changePasswordDto: ChangePasswordDto = req.body;
+    const result = await this.userService.changePassword(userId, changePasswordDto);
+    return sendSuccess(res, { accessToken: result.accessToken, refreshToken: result.refreshToken }, result.message);
   });
 }

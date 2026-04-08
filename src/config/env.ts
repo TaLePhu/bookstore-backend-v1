@@ -41,6 +41,21 @@ export interface EnvConfig {
     windowMs: number;
     maxRequests: number;
   };
+
+  // Redis
+  redis: {
+    host: string;
+    port: number;
+    password?: string;
+  };
+
+  // SMTP
+  smtp: {
+    host: string;
+    port: number;
+    user: string;
+    pass: string;
+  };
 }
 
 function parseEnv(): EnvConfig {
@@ -81,6 +96,19 @@ function parseEnv(): EnvConfig {
     rateLimit: {
       windowMs: parseInt(process.env['RATE_LIMIT_WINDOW_MS'] || '15000', 10),
       maxRequests: parseInt(process.env['RATE_LIMIT_MAX_REQUESTS'] || '100', 10),
+    },
+
+    redis: {
+      host: process.env['REDIS_HOST'] || '127.0.0.1',
+      port: parseInt(process.env['REDIS_PORT'] || '6380', 10),
+      password: process.env['REDIS_PASSWORD'],
+    },
+
+    smtp: {
+      host: process.env['SMTP_HOST'] || 'smtp.gmail.com',
+      port: parseInt(process.env['SMTP_PORT'] || '587', 10),
+      user: process.env['SMTP_USER'] || '',
+      pass: process.env['SMTP_PASS'] || '',
     },
   };
 }

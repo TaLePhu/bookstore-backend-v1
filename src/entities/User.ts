@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   OneToMany,
+  OneToOne,
   Index,
 } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
@@ -14,6 +15,7 @@ import { Order } from './Order';
 import { Review } from './Review';
 import { UserBehavior } from './UserBehavior';
 import { RefreshToken } from './RefreshToken';
+import { UserAdvance } from './UserAdvance';
 
 export enum Role {
   GUEST = 'GUEST',
@@ -28,8 +30,11 @@ export class User {
   @PrimaryColumn('uuid')
   id: string = uuidv4();
 
-  @Column('varchar', { length: 255 })
-  name: string;
+  @Column('varchar', { length: 255, name: 'user_name' })
+  userName: string;
+
+  @Column('varchar', { length: 255, nullable: true, name: 'full_name' })
+  fullName: string;
 
   @Column('varchar', { length: 255, unique: true })
   email: string;
@@ -39,6 +44,9 @@ export class User {
 
   @Column('enum', { enum: Role, default: Role.CUSTOMER })
   role: Role;
+
+  @Column('boolean', { default: false, name: 'is_verified' })
+  isVerified: boolean;
 
   @CreateDateColumn()
   createdAt: Date;
@@ -64,4 +72,7 @@ export class User {
 
   @OneToMany(() => RefreshToken, (token) => token.user, { cascade: true })
   refreshTokens: RefreshToken[];
+
+  @OneToOne(() => UserAdvance, (userAdvance) => userAdvance.user, { cascade: true })
+  userAdvance: UserAdvance;
 }

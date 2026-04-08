@@ -17,10 +17,12 @@ import { BookImage } from '@entities/BookImage';
 import { Embedding } from '@entities/Embedding';
 import { UserBehavior } from '@entities/UserBehavior';
 import { RefreshToken } from '@entities/RefreshToken';
+import { UserAdvance } from '@entities/UserAdvance';
 
 // Migrations
 import { InitialMigration1710000000000 } from '../migrations/1710000000000-InitialMigration';
 import { EnablePgvectorExtension1710000000001 } from '../migrations/1710000000001-EnablePgvectorExtension';
+import { UpdateUsersColumns1710000000002 } from '../migrations/1710000000002-UpdateUsersColumns';
 
 const env = getEnv();
 
@@ -47,9 +49,14 @@ export const AppDataSource = new DataSource({
     BookImage,
     Embedding,
     UserBehavior,
+    UserAdvance,
     RefreshToken,
   ],
-  migrations: [InitialMigration1710000000000, EnablePgvectorExtension1710000000001],
+  migrations: [
+    InitialMigration1710000000000,
+    EnablePgvectorExtension1710000000001,
+    UpdateUsersColumns1710000000002,
+  ],
   subscribers: [],
   cache: false,
   dropSchema: false,
@@ -93,6 +100,19 @@ export const AppDataSource = new DataSource({
       return `uq_${tbName.toLowerCase()}_${columnNames.join('_').toLowerCase()}`;
     },
     relationName: (propertyName: string) => propertyName,
+    relationConstraintName: (
+      tableOrName: any,
+      columnNames: string[],
+      referencedTableName?: any
+    ) => {
+      const tbName = typeof tableOrName === 'string' ? tableOrName : tableOrName.name;
+      const refName = referencedTableName
+        ? typeof referencedTableName === 'string'
+          ? referencedTableName
+          : referencedTableName.name
+        : 'ref';
+      return `rel_${tbName.toLowerCase()}_${columnNames.join('_').toLowerCase()}_${refName.toLowerCase()}`;
+    },
     indexName: (tableOrName: any, columnNames: string[]) => {
       const tbName = typeof tableOrName === 'string' ? tableOrName : tableOrName.name;
       return `idx_${tbName.toLowerCase()}_${columnNames.join('_').toLowerCase()}`;

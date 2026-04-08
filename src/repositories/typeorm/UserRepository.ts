@@ -11,9 +11,10 @@ export class UserRepository implements IUserRepository {
     this.repository = AppDataSource.getRepository(User);
   }
 
-  async findById(id: string): Promise<User | null> {
+  async findById(id: string, relations?: string[]): Promise<User | null> {
     return this.repository.findOne({
       where: { id },
+      relations: relations || [],
     });
   }
 

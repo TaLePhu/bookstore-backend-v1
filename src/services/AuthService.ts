@@ -1,24 +1,25 @@
 import { injectable, inject } from 'tsyringe';
 import { RegisterDto } from '@dtos/auth/RegisterDto';
 import { LoginDto } from '@dtos/auth/LoginDto';
+import { VerifyEmailDto } from '@dtos/auth/VerifyEmailDto';
 import { IUserRepository } from '@repositories/interfaces/IUserRepository';
 import { IRefreshTokenRepository } from '@repositories/interfaces/IRefreshTokenRepository';
 import { TOKENS } from '@config/container';
 import { HashHelper } from '@utils/hash';
 import { TokenHelper } from '@utils/jwt';
 import { ConflictError, UnauthorizedError } from '@utils/errors';
-import { Role } from '@entities/User';
+import { Role, User } from '@entities/User';
 import { RefreshToken } from '@entities/RefreshToken';
+import redisConfig from '@config/redis';
+import { emailQueue } from '@config/queue';
 
 export interface AuthResponse {
+  id: string;
+  email: string;
+  userName: string;
+  role: Role;
   accessToken: string;
   refreshToken: string;
-  user: {
-    id: string;
-    email: string;
-    name: string;
-    role: Role;
-  };
 }
 
 @injectable()
@@ -28,7 +29,7 @@ export class AuthService {
     @inject(TOKENS.REFRESH_TOKEN_REPOSITORY) private refreshTokenRepository: IRefreshTokenRepository
   ) {}
 
-  async register(data: RegisterDto): Promise<AuthResponse> {
+  async register(data: RegisterDto): Promise<{ message: string }> {
     // Check if user already exists
     const existingUser = await this.userRepository.findByEmail(data.email);
     if (existingUser) {
@@ -41,11 +42,51 @@ export class AuthService {
     // Create user
     const user = await this.userRepository.create({
       email: data.email,
-      name: data.name,
+      userName: data.userName,
       passwordHash,
       role: Role.CUSTOMER,
+      isVerified: false,
+    } as any);
+
+    // Generate 4 digit code
+    const verificationCode = Math.floor(1000 + Math.random() * 9000).toString();
+    
+    // Save to Redis (expires in 15 mins)
+    await redisConfig.setex(`verify_code:${data.email}`, 15 * 60, verificationCode);
+    
+    // Push to email queue
+    await emailQueue.add('sendVerificationCode', {
+      to: data.email,
+      subject: 'Xác thực tài khoản BookStore',
+      html: `<h1>Mã xác thực của bạn</h1><p>Mã của bạn là: <strong style="font-size:24px;">${verificationCode}</strong></p><p>Mã này sẽ hết hạn trong 15 phút.</p>`
     });
 
+    return {
+      message: 'Đăng ký thành công. Vui lòng kiểm tra email để nhận mã xác thực.',
+    };
+  }
+
+  async verifyEmail(data: VerifyEmailDto): Promise<AuthResponse> {
+    const { email, code } = data;
+    
+    // Check redis
+    const storedCode = await redisConfig.get(`verify_code:${email}`);
+    if (!storedCode || storedCode !== code) {
+      throw new UnauthorizedError('Mã xác thực không hợp lệ hoặc đã hết hạn');
+    }
+    
+    const user = await this.userRepository.findByEmail(email);
+    if (!user) {
+      throw new UnauthorizedError('Không tìm thấy user');
+    }
+    
+    // Update user
+    user.isVerified = true;
+    await this.userRepository.update(user.id, user);
+    
+    // Remove code from redis
+    await redisConfig.del(`verify_code:${email}`);
+    
     // Generate tokens
     const accessToken = TokenHelper.generateAccessToken({
       userId: user.id,
@@ -60,17 +101,15 @@ export class AuthService {
     });
 
     // Store refresh token in database
-    const refreshTokenData = await this.createRefreshTokenRecord(user.id, refreshTokenValue);
+    await this.createRefreshTokenRecord(user.id, refreshTokenValue);
 
     return {
+      id: user.id,
+      userName: user.userName,
+      email: user.email,
+      role: user.role,
       accessToken,
-      refreshToken: refreshTokenData.token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-      },
+      refreshToken: refreshTokenValue,
     };
   }
 
@@ -79,6 +118,10 @@ export class AuthService {
     const user = await this.userRepository.findByEmail(data.email);
     if (!user) {
       throw new UnauthorizedError('Invalid email or password');
+    }
+
+    if (!user.isVerified) {
+      throw new UnauthorizedError('Vui lòng xác thực email trước khi đăng nhập');
     }
 
     // Verify password
@@ -101,17 +144,15 @@ export class AuthService {
     });
 
     // Store refresh token in database
-    const refreshTokenData = await this.createRefreshTokenRecord(user.id, refreshTokenValue);
+    await this.createRefreshTokenRecord(user.id, refreshTokenValue);
 
     return {
+      id: user.id,
+      userName: user.userName,
+      email: user.email,
+      role: user.role,
       accessToken,
-      refreshToken: refreshTokenData.token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-      },
+      refreshToken: refreshTokenValue,
     };
   }
 
@@ -154,17 +195,15 @@ export class AuthService {
     await this.refreshTokenRepository.revoke(refreshTokenRecord.id);
 
     // Store new refresh token
-    const newRefreshTokenData = await this.createRefreshTokenRecord(user.id, newRefreshTokenValue);
+    await this.createRefreshTokenRecord(user.id, newRefreshTokenValue);
 
     return {
+      id: user.id,
+      userName: user.userName,
+      email: user.email,
+      role: user.role,
       accessToken,
-      refreshToken: newRefreshTokenData.token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-      },
+      refreshToken: newRefreshTokenValue,
     };
   }
 
@@ -182,6 +221,6 @@ export class AuthService {
       token,
       expiresAt,
       isRevoked: false,
-    });
+    } as any);
   }
 }
