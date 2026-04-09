@@ -24,6 +24,7 @@ import { InitialMigration1710000000000 } from '../migrations/1710000000000-Initi
 import { EnablePgvectorExtension1710000000001 } from '../migrations/1710000000001-EnablePgvectorExtension';
 import { UpdateUsersColumns1710000000002 } from '../migrations/1710000000002-UpdateUsersColumns';
 import { CreateUserAdvances1710000000003 } from '../migrations/1710000000003-CreateUserAdvances';
+import { AddBookDetails1775747431811 } from '../migrations/1775747431811-AddBookDetails';
 
 const env = getEnv();
 
@@ -58,6 +59,7 @@ export const AppDataSource = new DataSource({
     EnablePgvectorExtension1710000000001,
     UpdateUsersColumns1710000000002,
     CreateUserAdvances1710000000003,
+    AddBookDetails1775747431811,
   ],
   subscribers: [],
   cache: false,

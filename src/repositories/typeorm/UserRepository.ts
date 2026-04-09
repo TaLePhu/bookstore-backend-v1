@@ -19,9 +19,10 @@ export class UserRepository implements IUserRepository {
   }
 
   async findByEmail(email: string): Promise<User | null> {
-    return this.repository.findOne({
-      where: { email },
-    });
+    return this.repository.createQueryBuilder('user')
+      .where('user.email = :email', { email })
+      .addSelect('user.passwordHash')
+      .getOne();
   }
 
   async create(userData: Partial<User>): Promise<User> {

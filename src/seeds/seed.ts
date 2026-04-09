@@ -88,6 +88,24 @@ async function seed() {
     book.stock = 100;
     book.isbn = `978-00${i.toString().padStart(6, '0')}`;
     book.category = categories[i % 5];
+    
+    // New Book Details
+    book.translator = `Người Dịch ${i}`;
+    book.publisher = `Nhà Xuất Bản ${i % 2 === 0 ? 'Thanh Niên' : 'Kim Đồng'}`;
+    book.publishYear = 2020 + (i % 5);
+    book.pages = 150 + i * 20;
+    book.dimensions = '13 x 20.5 cm';
+    book.weight = `${200 + i * 15}g`;
+    book.format = i % 2 === 0 ? 'Bìa cứng' : 'Bìa mềm';
+    book.language = 'Tiếng Việt';
+    book.originalPrice = Number(book.price) * 1.25; // 25% original price markup
+    book.discount = 20; // 20% fake discount
+    book.highlights = [
+      'Điểm nhấn 1 của sách',
+      'Được độc giả đánh giá rất cao',
+      'Thuộc top bán chạy năm nay'
+    ];
+
     books.push(await bookRepo.save(book));
   }
 

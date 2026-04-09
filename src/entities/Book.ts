@@ -40,6 +40,39 @@ export class Book {
   @Column('varchar', { name: 'isbn', length: 20, unique: true })
   isbn: string;
 
+  @Column('varchar', { length: 255, nullable: true })
+  translator: string;
+
+  @Column('varchar', { length: 255, nullable: true })
+  publisher: string;
+
+  @Column('integer', { nullable: true })
+  publishYear: number;
+
+  @Column('integer', { nullable: true })
+  pages: number;
+
+  @Column('varchar', { length: 255, nullable: true })
+  dimensions: string;
+
+  @Column('varchar', { length: 255, nullable: true })
+  weight: string;
+
+  @Column('varchar', { length: 255, nullable: true })
+  format: string;
+
+  @Column('varchar', { length: 255, nullable: true })
+  language: string;
+
+  @Column('decimal', { precision: 10, scale: 2, nullable: true })
+  originalPrice: number;
+
+  @Column('integer', { nullable: true })
+  discount: number;
+
+  @Column('simple-array', { nullable: true })
+  highlights: string[];
+
   @CreateDateColumn()
   createdAt: Date;
 
