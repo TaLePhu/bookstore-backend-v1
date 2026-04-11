@@ -31,6 +31,12 @@ export class Order {
   @Column('decimal', { precision: 15, scale: 2 })
   totalAmount: number;
 
+  @Column('decimal', { precision: 15, scale: 2, default: 0 })
+  shippingFee: number;
+
+  @Column('text', { nullable: true })
+  note: string | null;
+
   @Column('enum', { enum: OrderStatus, default: OrderStatus.PENDING })
   status: OrderStatus;
 
