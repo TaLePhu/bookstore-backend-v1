@@ -26,6 +26,7 @@ import { UpdateUsersColumns1710000000002 } from '../migrations/1710000000002-Upd
 import { CreateUserAdvances1710000000003 } from '../migrations/1710000000003-CreateUserAdvances';
 import { AddBookDetails1775747431811 } from '../migrations/1775747431811-AddBookDetails';
 import { UpdateOrderFields1775921700962 } from '../migrations/1775921700962-UpdateOrderFields';
+import { AddIsLockedToUsers1775999000000 } from '../migrations/1775999000000-AddIsLockedToUsers';
 
 const env = getEnv();
 
@@ -62,6 +63,7 @@ export const AppDataSource = new DataSource({
     CreateUserAdvances1710000000003,
     AddBookDetails1775747431811,
     UpdateOrderFields1775921700962,
+    AddIsLockedToUsers1775999000000,
   ],
   subscribers: [],
   cache: false,

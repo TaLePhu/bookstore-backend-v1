@@ -5,6 +5,7 @@ import bookRoutes from './book.routes';
 import categoryRoutes from './category.routes';
 import cartRoutes from './cart.routes';
 import orderRoutes from './order.routes';
+import adminRoutes from './admin.routes';
 
 const router = Router();
 
@@ -14,5 +15,7 @@ router.use('/books', bookRoutes);
 router.use('/categories', categoryRoutes);
 router.use('/cart', cartRoutes);
 router.use('/orders', orderRoutes);
+router.use('/admin', adminRoutes);
 
 export default router;
+

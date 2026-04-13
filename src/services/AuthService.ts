@@ -7,7 +7,7 @@ import { IRefreshTokenRepository } from '@repositories/interfaces/IRefreshTokenR
 import { TOKENS } from '@config/container';
 import { HashHelper } from '@utils/hash';
 import { TokenHelper } from '@utils/jwt';
-import { ConflictError, UnauthorizedError } from '@utils/errors';
+import { ConflictError, UnauthorizedError, ForbiddenError } from '@utils/errors';
 import { Role, User } from '@entities/User';
 import { RefreshToken } from '@entities/RefreshToken';
 import redisConfig from '@config/redis';
@@ -124,6 +124,10 @@ export class AuthService {
       throw new UnauthorizedError('Vui lòng xác thực email trước khi đăng nhập');
     }
 
+    if (user.isLocked) {
+      throw new ForbiddenError('Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Admin.');
+    }
+
     // Verify password
     const isPasswordValid = await HashHelper.compare(data.password, user.passwordHash);
     if (!isPasswordValid) {
@@ -177,6 +181,10 @@ export class AuthService {
     }
 
     const user = refreshTokenRecord.user;
+
+    if (user.isLocked) {
+      throw new ForbiddenError('Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Admin.');
+    }
 
     // Generate new token pair
     const accessToken = TokenHelper.generateAccessToken({

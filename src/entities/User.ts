@@ -48,6 +48,9 @@ export class User {
   @Column('boolean', { default: false, name: 'is_verified' })
   isVerified: boolean;
 
+  @Column('boolean', { default: false, name: 'is_locked' })
+  isLocked: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 
