@@ -185,6 +185,7 @@ export async function runSeed(options: SeedOptions = {}) {
     oItem.book = books[i % 5];
     oItem.quantity = 2;
     oItem.price = books[i % 5].price;
+    oItem.subTotal = Number(oItem.price) * oItem.quantity;
     await orderItemRepo.save(oItem);
 
     const payment = new Payment();
