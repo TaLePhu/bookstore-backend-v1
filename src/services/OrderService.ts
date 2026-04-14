@@ -1,24 +1,24 @@
 import { AppDataSource } from '@config/data-source';
+import { injectable, inject } from 'tsyringe';
 import { Order, OrderStatus } from '@entities/Order';
 import { OrderItem } from '@entities/OrderItem';
 import { Book } from '@entities/Book';
 import { CartItem } from '@entities/CartItem';
 import { Address } from '@entities/Address';
 import { Cart } from '@entities/Cart';
-import { OrderRepository } from '@repositories/typeorm/OrderRepository';
-import { CartRepository } from '@repositories/typeorm/CartRepository';
+import { IOrderRepository } from '@repositories/interfaces/IOrderRepository';
+import { ICartRepository } from '@repositories/interfaces/ICartRepository';
 import { CreateOrderDto } from '@dtos/order/CreateOrderDto';
 import { AppError, NotFoundError } from '@utils/errors';
 import { EntityManager } from 'typeorm';
+import { TOKENS } from '@config/container';
 
+@injectable()
 export class OrderService {
-  private orderRepository: OrderRepository;
-  private cartRepository: CartRepository;
-
-  constructor() {
-    this.orderRepository = new OrderRepository();
-    this.cartRepository = new CartRepository();
-  }
+  constructor(
+    @inject(TOKENS.ORDER_REPOSITORY) private orderRepository: IOrderRepository,
+    @inject(TOKENS.CART_REPOSITORY) private cartRepository: ICartRepository
+  ) {}
 
   /**
    * POST /orders
@@ -43,33 +43,48 @@ export class OrderService {
       throw new NotFoundError('Địa chỉ không tồn tại hoặc không thuộc về bạn');
     }
 
-    // 3. Kiểm tra stock TRƯỚC khi vào transaction
-    for (const cartItem of cart.items) {
-      const book = cartItem.book;
-      if (!book) {
-        throw new NotFoundError(`Sách trong giỏ hàng không còn tồn tại`);
-      }
-      if (book.stock < cartItem.quantity) {
-        throw new AppError(
-          `Sách "${book.title}" chỉ còn ${book.stock} cuốn trong kho (bạn đang chọn ${cartItem.quantity})`,
-          400
-        );
-      }
-    }
-
-    // 4. Tính toán
-    const shippingFee = dto.shippingFee ?? 0;
-    const itemsData = cart.items.map((cartItem) => ({
-      bookId: cartItem.bookId,
-      book: cartItem.book,
-      quantity: cartItem.quantity,
-      price: Number(cartItem.book.price),
-      subTotal: cartItem.quantity * Number(cartItem.book.price),
-    }));
-    const totalAmount = itemsData.reduce((sum, item) => sum + item.subTotal, 0) + shippingFee;
-
-    // 5–7. Transaction: tạo Order, trừ stock, xoá CartItems
+    // 3-7. Transaction: khóa stock, tạo Order, trừ stock, xoá CartItems
     const savedOrder = await AppDataSource.transaction(async (manager: EntityManager) => {
+      const txCart = await manager.findOne(Cart, {
+        where: { id: cart.id, userId },
+        relations: ['items'],
+      });
+
+      if (!txCart || !txCart.items || txCart.items.length === 0) {
+        throw new AppError('Giỏ hàng của bạn đang rỗng', 400);
+      }
+
+      const shippingFee = dto.shippingFee ?? 0;
+      const itemsData: Array<{ bookId: string; quantity: number; price: number; subTotal: number }> = [];
+
+      for (const cartItem of txCart.items) {
+        const lockedBook = await manager.findOne(Book, {
+          where: { id: cartItem.bookId },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (!lockedBook) {
+          throw new NotFoundError('Sách trong giỏ hàng không còn tồn tại');
+        }
+
+        if (lockedBook.stock < cartItem.quantity) {
+          throw new AppError(
+            `Sách "${lockedBook.title}" chỉ còn ${lockedBook.stock} cuốn trong kho (bạn đang chọn ${cartItem.quantity})`,
+            400
+          );
+        }
+
+        const price = Number(lockedBook.price);
+        itemsData.push({
+          bookId: lockedBook.id,
+          quantity: cartItem.quantity,
+          price,
+          subTotal: cartItem.quantity * price,
+        });
+      }
+
+      const totalAmount = itemsData.reduce((sum, item) => sum + item.subTotal, 0) + shippingFee;
+
       // 5a. Tạo Order entity
       const order = manager.create(Order, {
         userId,
@@ -99,7 +114,7 @@ export class OrderService {
       }
 
       // 7. Xoá toàn bộ CartItems của cart (giỏ hàng trở về rỗng)
-      await manager.delete(CartItem, { cartId: cart.id });
+      await manager.delete(CartItem, { cartId: txCart.id });
 
       return createdOrder;
     });
