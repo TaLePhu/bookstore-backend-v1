@@ -13,14 +13,16 @@ const connection = {
 export const transporter = nodemailer.createTransport({
   host: env.smtp.host,
   port: env.smtp.port,
-  secure: false, // true for 465, false for other ports
+  secure: env.smtp.port === 465,
   auth: {
     user: env.smtp.user,
     pass: env.smtp.pass,
   },
 });
 
-export const emailQueue = new Queue('EmailQueue', { connection });
+const EMAIL_QUEUE_NAME = 'email-queue';
+
+export const emailQueue = new Queue(EMAIL_QUEUE_NAME, { connection });
 
 export interface EmailJobData {
   to: string;
@@ -30,7 +32,7 @@ export interface EmailJobData {
 }
 
 const emailWorker = new Worker(
-  'EmailQueue',
+  EMAIL_QUEUE_NAME,
   async (job: Job<EmailJobData>) => {
     const { to, subject, text, html } = job.data;
     try {

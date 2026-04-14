@@ -1,9 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
+import { container } from 'tsyringe';
 import { CartService } from '@services/CartService';
 import { AddToCartDto } from '@dtos/cart/AddToCartDto';
 import { UpdateCartItemDto } from '@dtos/cart/UpdateCartItemDto';
 
-const cartService = new CartService();
+const cartService = container.resolve(CartService);
 
 export class CartController {
   /**

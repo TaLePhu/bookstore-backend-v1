@@ -1,21 +1,20 @@
-import { CartRepository } from '@repositories/typeorm/CartRepository';
-import { CartItemRepository } from '@repositories/typeorm/CartItemRepository';
-import { BookRepository } from '@repositories/typeorm/BookRepository';
+import { injectable, inject } from 'tsyringe';
+import { ICartRepository } from '@repositories/interfaces/ICartRepository';
+import { ICartItemRepository } from '@repositories/interfaces/ICartItemRepository';
+import { IBookRepository } from '@repositories/interfaces/IBookRepository';
 import { AddToCartDto } from '@dtos/cart/AddToCartDto';
 import { UpdateCartItemDto } from '@dtos/cart/UpdateCartItemDto';
 import { Cart } from '@entities/Cart';
 import { NotFoundError, AppError } from '@utils/errors';
+import { TOKENS } from '@config/container';
 
+@injectable()
 export class CartService {
-  private cartRepository: CartRepository;
-  private cartItemRepository: CartItemRepository;
-  private bookRepository: BookRepository;
-
-  constructor() {
-    this.cartRepository = new CartRepository();
-    this.cartItemRepository = new CartItemRepository();
-    this.bookRepository = new BookRepository();
-  }
+  constructor(
+    @inject(TOKENS.CART_REPOSITORY) private cartRepository: ICartRepository,
+    @inject(TOKENS.CART_ITEM_REPOSITORY) private cartItemRepository: ICartItemRepository,
+    @inject(TOKENS.BOOK_REPOSITORY) private bookRepository: IBookRepository
+  ) {}
 
   /**
    * Lấy giỏ hàng hiện tại của user.

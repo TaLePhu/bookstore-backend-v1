@@ -1,8 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
+import { container } from 'tsyringe';
 import { OrderService } from '@services/OrderService';
 import { CreateOrderDto } from '@dtos/order/CreateOrderDto';
 
-const orderService = new OrderService();
+const orderService = container.resolve(OrderService);
 
 export class OrderController {
   /**

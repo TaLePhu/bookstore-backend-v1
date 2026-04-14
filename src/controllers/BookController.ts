@@ -2,11 +2,20 @@ import { Request, Response, NextFunction } from 'express';
 import { container } from 'tsyringe';
 import { BookService } from '@services/BookService';
 
+function getSafePagination(pageValue: unknown, limitValue: unknown): { page: number; limit: number } {
+  const parsedPage = parseInt(String(pageValue ?? ''), 10);
+  const parsedLimit = parseInt(String(limitValue ?? ''), 10);
+
+  const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+  const limit = Number.isFinite(parsedLimit) ? Math.min(50, Math.max(1, parsedLimit)) : 10;
+
+  return { page, limit };
+}
+
 export class BookController {
   static async getAllBooks(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 10;
+      const { page, limit } = getSafePagination(req.query.page, req.query.limit);
       
       const bookService = container.resolve(BookService);
       const result = await bookService.getAllBooks(page, limit);
@@ -55,8 +64,7 @@ export class BookController {
     try {
       // Nhận query string từ URL (ví dụ: ?q=...)
       const query = req.query.q as string || '';
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 10;
+      const { page, limit } = getSafePagination(req.query.page, req.query.limit);
 
       const bookService = container.resolve(BookService);
       const result = await bookService.searchBooks(query, page, limit);
