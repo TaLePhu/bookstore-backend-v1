@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Request, Response, Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { container } from 'tsyringe';
 import { AuthController } from '@controllers/AuthController';
@@ -8,16 +8,37 @@ import { RegisterDto } from '@dtos/auth/RegisterDto';
 import { LoginDto } from '@dtos/auth/LoginDto';
 import { RefreshTokenDto } from '@dtos/auth/RefreshTokenDto';
 import { VerifyEmailDto } from '@dtos/auth/VerifyEmailDto';
+import { ResendVerificationCodeDto } from '@dtos/auth/ResendVerificationCodeDto';
 
 const router = Router();
 const authController = container.resolve(AuthController);
+
+function getRetryAfterSeconds(req: Request): number | null {
+  const rateLimitInfo = (req as any).rateLimit;
+  if (!rateLimitInfo?.resetTime) {
+    return null;
+  }
+
+  const resetAt = new Date(rateLimitInfo.resetTime).getTime();
+  const seconds = Math.ceil((resetAt - Date.now()) / 1000);
+  return seconds > 0 ? seconds : 0;
+}
 
 const authWriteLimiter = rateLimit({
 	windowMs: 15 * 60 * 1000,
 	max: 10,
 	standardHeaders: true,
 	legacyHeaders: false,
-	message: 'Too many authentication attempts. Please try again later.',
+	handler: (req: Request, res: Response) => {
+		const retryAfterSeconds = getRetryAfterSeconds(req);
+		res.status(429).json({
+			success: false,
+			message: 'Bạn đã thử quá nhiều lần. Vui lòng thử lại sau.',
+			data: {
+				retryAfterSeconds,
+			},
+		});
+	},
 });
 
 const verifyEmailLimiter = rateLimit({
@@ -25,12 +46,22 @@ const verifyEmailLimiter = rateLimit({
 	max: 5,
 	standardHeaders: true,
 	legacyHeaders: false,
-	message: 'Too many verification attempts. Please try again later.',
+	handler: (req: Request, res: Response) => {
+		const retryAfterSeconds = getRetryAfterSeconds(req);
+		res.status(429).json({
+			success: false,
+				message: 'Bạn đã nhập mã xác thực quá số lần cho phép. Vui lòng chờ rồi dùng chức năng gửi lại mã.',
+			data: {
+				retryAfterSeconds,
+			},
+		});
+	},
 });
 
 // Public routes
 router.post('/register', authWriteLimiter, validateDto(RegisterDto), authController.register);
-router.post('/verify-email', verifyEmailLimiter, validateDto(VerifyEmailDto), authController.verifyEmail);
+router.post('/verify-email', validateDto(VerifyEmailDto), authController.verifyEmail);
+	router.post('/resend-code', authWriteLimiter, validateDto(ResendVerificationCodeDto), authController.resendVerificationCode);
 router.post('/login', authWriteLimiter, validateDto(LoginDto), authController.login);
 router.post('/refresh-token', authWriteLimiter, validateDto(RefreshTokenDto), authController.refreshToken);
 

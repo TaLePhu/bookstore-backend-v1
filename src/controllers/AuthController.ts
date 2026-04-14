@@ -5,6 +5,7 @@ import { RegisterDto } from '@dtos/auth/RegisterDto';
 import { LoginDto } from '@dtos/auth/LoginDto';
 import { RefreshTokenDto } from '@dtos/auth/RefreshTokenDto';
 import { VerifyEmailDto } from '@dtos/auth/VerifyEmailDto';
+import { ResendVerificationCodeDto } from '@dtos/auth/ResendVerificationCodeDto';
 import { sendSuccess, sendError } from '@utils/response';
 import { asyncWrapper } from '@utils/async-wrapper';
 
@@ -22,6 +23,12 @@ export class AuthController {
     const verifyEmailDto: VerifyEmailDto = req.body;
     const result = await this.authService.verifyEmail(verifyEmailDto);
     return sendSuccess(res, result, 'Email verified successfully', 200);
+  });
+
+  resendVerificationCode = asyncWrapper(async (req: Request, res: Response) => {
+    const resendDto: ResendVerificationCodeDto = req.body;
+    const result = await this.authService.resendVerificationCode(resendDto);
+    return sendSuccess(res, result, 'Verification code resent successfully', 200);
   });
 
   login = asyncWrapper(async (req: Request, res: Response) => {

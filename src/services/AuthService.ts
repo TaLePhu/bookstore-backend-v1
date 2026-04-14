@@ -8,7 +8,7 @@ import { IRefreshTokenRepository } from '@repositories/interfaces/IRefreshTokenR
 import { TOKENS } from '@config/container';
 import { HashHelper } from '@utils/hash';
 import { TokenHelper } from '@utils/jwt';
-import { ConflictError, UnauthorizedError, ForbiddenError } from '@utils/errors';
+import { ConflictError, UnauthorizedError, ForbiddenError, NotFoundError } from '@utils/errors';
 import { Role, User } from '@entities/User';
 import { RefreshToken } from '@entities/RefreshToken';
 import redisConfig from '@config/redis';
@@ -34,14 +34,13 @@ export class AuthService {
   ) {}
 
   async register(data: RegisterDto): Promise<{ message: string }> {
+    const passwordHash = await HashHelper.hash(data.password);
+
     // Check if user already exists
     const existingUser = await this.userRepository.findByEmail(data.email);
     if (existingUser) {
       throw new ConflictError('Email already registered');
     }
-
-    // Hash password
-    const passwordHash = await HashHelper.hash(data.password);
 
     // Create user
     const user = await this.userRepository.create({
@@ -52,26 +51,27 @@ export class AuthService {
       isVerified: false,
     } as any);
 
-    // Generate 6 digit code using cryptographically secure randomness
-    const verificationCode = randomInt(100000, 1000000).toString();
-    
-    // Save to Redis (expires in 15 mins)
-    await redisConfig.setex(
-      `verify_code:${data.email}`,
-      AuthService.VERIFY_CODE_TTL_SECONDS,
-      verificationCode
-    );
-    await redisConfig.del(`verify_attempts:${data.email}`);
-    
-    // Push to email queue
-    await emailQueue.add('sendVerificationCode', {
-      to: data.email,
-      subject: 'Xác thực tài khoản BookStore',
-      html: `<h1>Mã xác thực của bạn</h1><p>Mã của bạn là: <strong style="font-size:24px;">${verificationCode}</strong></p><p>Mã này sẽ hết hạn trong 15 phút.</p>`
-    });
+    await this.sendVerificationCode(data.email);
 
     return {
       message: 'Đăng ký thành công. Vui lòng kiểm tra email để nhận mã xác thực.',
+    };
+  }
+
+  async resendVerificationCode(data: { email: string }): Promise<{ message: string }> {
+    const user = await this.userRepository.findByEmail(data.email);
+    if (!user) {
+      throw new NotFoundError('Không tìm thấy tài khoản với email này');
+    }
+
+    if (user.isVerified) {
+      throw new ConflictError('Tài khoản đã được xác thực, không cần gửi lại mã');
+    }
+
+    await this.sendVerificationCode(data.email);
+
+    return {
+      message: 'Đã gửi lại mã xác thực mới. Vui lòng kiểm tra email.',
     };
   }
 
@@ -93,7 +93,7 @@ export class AuthService {
       if (attempts >= AuthService.VERIFY_MAX_ATTEMPTS) {
         await redisConfig.del(`verify_code:${email}`);
         await redisConfig.del(attemptsKey);
-        throw new UnauthorizedError('Bạn đã nhập sai mã xác thực quá số lần cho phép. Vui lòng đăng ký lại để nhận mã mới.');
+        throw new UnauthorizedError('Bạn đã nhập sai mã xác thực quá số lần cho phép. Vui lòng dùng chức năng gửi lại mã để nhận mã mới.');
       }
 
       throw new UnauthorizedError('Mã xác thực không hợp lệ hoặc đã hết hạn');
@@ -255,5 +255,22 @@ export class AuthService {
       expiresAt,
       isRevoked: false,
     } as any);
+  }
+
+  private async sendVerificationCode(email: string): Promise<void> {
+    const verificationCode = randomInt(100000, 1000000).toString();
+
+    await redisConfig.setex(
+      `verify_code:${email}`,
+      AuthService.VERIFY_CODE_TTL_SECONDS,
+      verificationCode
+    );
+    await redisConfig.del(`verify_attempts:${email}`);
+
+    await emailQueue.add('sendVerificationCode', {
+      to: email,
+      subject: 'Xác thực tài khoản BookStore',
+      html: `<h1>Mã xác thực của bạn</h1><p>Mã của bạn là: <strong style="font-size:24px;">${verificationCode}</strong></p><p>Mã này sẽ hết hạn trong 15 phút.</p>`,
+    });
   }
 }
