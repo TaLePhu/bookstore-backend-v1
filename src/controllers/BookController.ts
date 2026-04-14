@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { container } from 'tsyringe';
+import { injectable } from 'tsyringe';
 import { BookService } from '@services/BookService';
 
 function getSafePagination(pageValue: unknown, limitValue: unknown): { page: number; limit: number } {
@@ -12,13 +12,15 @@ function getSafePagination(pageValue: unknown, limitValue: unknown): { page: num
   return { page, limit };
 }
 
+@injectable()
 export class BookController {
-  static async getAllBooks(req: Request, res: Response, next: NextFunction): Promise<void> {
+  constructor(private bookService: BookService) {}
+
+  getAllBooks = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { page, limit } = getSafePagination(req.query.page, req.query.limit);
-      
-      const bookService = container.resolve(BookService);
-      const result = await bookService.getAllBooks(page, limit);
+
+      const result = await this.bookService.getAllBooks(page, limit);
       
       res.status(200).json({
         success: true,
@@ -32,9 +34,9 @@ export class BookController {
     } catch (error) {
       next(error);
     }
-  }
+  };
 
-  static async getBookById(req: Request, res: Response, next: NextFunction): Promise<void> {
+  getBookById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id } = req.params;
       
@@ -48,8 +50,7 @@ export class BookController {
         return;
       }
 
-      const bookService = container.resolve(BookService);
-      const book = await bookService.getBookById(id);
+      const book = await this.bookService.getBookById(id);
       
       res.status(200).json({
         success: true,
@@ -58,16 +59,15 @@ export class BookController {
     } catch (error) {
       next(error);
     }
-  }
+  };
 
-  static async searchBooks(req: Request, res: Response, next: NextFunction): Promise<void> {
+  searchBooks = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       // Nhận query string từ URL (ví dụ: ?q=...)
       const query = req.query.q as string || '';
       const { page, limit } = getSafePagination(req.query.page, req.query.limit);
 
-      const bookService = container.resolve(BookService);
-      const result = await bookService.searchBooks(query, page, limit);
+      const result = await this.bookService.searchBooks(query, page, limit);
 
       res.status(200).json({
         success: true,
@@ -81,5 +81,5 @@ export class BookController {
     } catch (error) {
       next(error);
     }
-  }
+  };
 }

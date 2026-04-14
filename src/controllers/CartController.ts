@@ -1,20 +1,21 @@
 import { Request, Response, NextFunction } from 'express';
-import { container } from 'tsyringe';
+import { injectable } from 'tsyringe';
 import { CartService } from '@services/CartService';
 import { AddToCartDto } from '@dtos/cart/AddToCartDto';
 import { UpdateCartItemDto } from '@dtos/cart/UpdateCartItemDto';
 
-const cartService = container.resolve(CartService);
-
+@injectable()
 export class CartController {
+  constructor(private cartService: CartService) {}
+
   /**
    * GET /cart
    * Lấy giỏ hàng của user đang đăng nhập.
    */
-  static async getCart(req: Request, res: Response, next: NextFunction): Promise<void> {
+  getCart = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const userId = req.user!.userId;
-      const cart = await cartService.getCart(userId);
+      const cart = await this.cartService.getCart(userId);
 
       res.status(200).json({
         success: true,
@@ -24,19 +25,19 @@ export class CartController {
     } catch (error) {
       next(error);
     }
-  }
+  };
 
   /**
    * POST /cart/add
    * Thêm sách vào giỏ hàng.
    * Body: { bookId: string, quantity: number }
    */
-  static async addToCart(req: Request, res: Response, next: NextFunction): Promise<void> {
+  addToCart = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const userId = req.user!.userId;
       const dto = req.body as AddToCartDto;
 
-      const cart = await cartService.addToCart(userId, dto);
+      const cart = await this.cartService.addToCart(userId, dto);
 
       res.status(200).json({
         success: true,
@@ -46,7 +47,7 @@ export class CartController {
     } catch (error) {
       next(error);
     }
-  }
+  };
 
   /**
    * PUT /cart/update/:itemId
@@ -54,13 +55,13 @@ export class CartController {
    * Params: itemId
    * Body: { quantity: number }
    */
-  static async updateCartItem(req: Request, res: Response, next: NextFunction): Promise<void> {
+  updateCartItem = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const userId = req.user!.userId;
       const { itemId } = req.params;
       const dto = req.body as UpdateCartItemDto;
 
-      const cart = await cartService.updateCartItem(userId, itemId, dto);
+      const cart = await this.cartService.updateCartItem(userId, itemId, dto);
 
       res.status(200).json({
         success: true,
@@ -70,19 +71,19 @@ export class CartController {
     } catch (error) {
       next(error);
     }
-  }
+  };
 
   /**
    * DELETE /cart/remove/:itemId
    * Xóa một mục khỏi giỏ hàng.
    * Params: itemId
    */
-  static async removeCartItem(req: Request, res: Response, next: NextFunction): Promise<void> {
+  removeCartItem = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const userId = req.user!.userId;
       const { itemId } = req.params;
 
-      const cart = await cartService.removeCartItem(userId, itemId);
+      const cart = await this.cartService.removeCartItem(userId, itemId);
 
       res.status(200).json({
         success: true,
@@ -92,5 +93,5 @@ export class CartController {
     } catch (error) {
       next(error);
     }
-  }
+  };
 }

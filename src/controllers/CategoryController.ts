@@ -1,12 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
-import { container } from 'tsyringe';
+import { injectable } from 'tsyringe';
 import { CategoryService } from '@services/CategoryService';
 
+@injectable()
 export class CategoryController {
-  static async getAllCategories(req: Request, res: Response, next: NextFunction): Promise<void> {
+  constructor(private categoryService: CategoryService) {}
+
+  getAllCategories = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const categoryService = container.resolve(CategoryService);
-      const categories = await categoryService.getAllCategories();
+      const categories = await this.categoryService.getAllCategories();
       
       res.status(200).json({
         success: true,
@@ -15,5 +17,5 @@ export class CategoryController {
     } catch (error) {
       next(error);
     }
-  }
+  };
 }

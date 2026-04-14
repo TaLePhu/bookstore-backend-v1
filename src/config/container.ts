@@ -7,6 +7,7 @@ import { ICategoryRepository } from '@repositories/interfaces/ICategoryRepositor
 import { ICartRepository } from '@repositories/interfaces/ICartRepository';
 import { ICartItemRepository } from '@repositories/interfaces/ICartItemRepository';
 import { IOrderRepository } from '@repositories/interfaces/IOrderRepository';
+import { IAdminUserRepository } from '@repositories/interfaces/IAdminUserRepository';
 import { UserRepository } from '@repositories/typeorm/UserRepository';
 import { RefreshTokenRepository } from '@repositories/typeorm/RefreshTokenRepository';
 import { BookRepository } from '@repositories/typeorm/BookRepository';
@@ -14,6 +15,7 @@ import { CategoryRepository } from '@repositories/typeorm/CategoryRepository';
 import { CartRepository } from '@repositories/typeorm/CartRepository';
 import { CartItemRepository } from '@repositories/typeorm/CartItemRepository';
 import { OrderRepository } from '@repositories/typeorm/OrderRepository';
+import { AdminUserRepository } from '@repositories/typeorm/AdminUserRepository';
 
 // Token symbols for DI
 export const TOKENS = {
@@ -24,6 +26,7 @@ export const TOKENS = {
   CART_REPOSITORY: 'ICartRepository',
   CART_ITEM_REPOSITORY: 'ICartItemRepository',
   ORDER_REPOSITORY: 'IOrderRepository',
+  ADMIN_USER_REPOSITORY: 'IAdminUserRepository',
 };
 
 export function setupDependencies(): void {
@@ -54,6 +57,10 @@ export function setupDependencies(): void {
 
   container.register<IOrderRepository>(TOKENS.ORDER_REPOSITORY, {
     useClass: OrderRepository,
+  });
+
+  container.register<IAdminUserRepository>(TOKENS.ADMIN_USER_REPOSITORY, {
+    useClass: AdminUserRepository,
   });
 }
 

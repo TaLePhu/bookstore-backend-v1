@@ -1,5 +1,6 @@
-import { AdminUserRepository } from '@repositories/typeorm/AdminUserRepository';
+import { injectable, inject } from 'tsyringe';
 import {
+  IAdminUserRepository,
   AdminUserFilter,
   CustomerSummary,
   PaginatedUsers,
@@ -8,6 +9,7 @@ import { Role, User } from '@entities/User';
 import { HashHelper } from '@utils/hash';
 import { NotFoundError, ForbiddenError } from '@utils/errors';
 import { emailQueue } from '@config/queue';
+import { TOKENS } from '@config/container';
 
 // Shape trả về cho danh sách user (không có passwordHash)
 export interface AdminUserListItem {
@@ -21,12 +23,12 @@ export interface AdminUserListItem {
   createdAt: Date;
 }
 
+@injectable()
 export class AdminUserService {
-  private adminUserRepository: AdminUserRepository;
-
-  constructor() {
-    this.adminUserRepository = new AdminUserRepository();
-  }
+  constructor(
+    @inject(TOKENS.ADMIN_USER_REPOSITORY)
+    private adminUserRepository: IAdminUserRepository
+  ) {}
 
   // ── GET /admin/users ───────────────────────────────────────────────────────
   async listUsers(filter: AdminUserFilter): Promise<{

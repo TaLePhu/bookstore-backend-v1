@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { container } from 'tsyringe';
 import { AdminUserController } from '@controllers/AdminUserController';
 import { authMiddleware } from '@middlewares/auth.middleware';
 import { roleGuard } from '@middlewares/role.middleware';
@@ -9,6 +10,7 @@ import { UpdateUserRoleDto } from '@dtos/admin/UpdateUserRoleDto';
 import { ResetPasswordDto } from '@dtos/admin/ResetPasswordDto';
 
 const router = Router();
+const adminUserController = container.resolve(AdminUserController);
 
 // ─── Bảo vệ toàn bộ route: phải đăng nhập & phải là ADMIN ─────────────────
 router.use(authMiddleware);
@@ -21,7 +23,7 @@ router.use(roleGuard(Role.ADMIN));
  * Danh sách tất cả tài khoản, lọc theo role, tìm kiếm theo email / fullName.
  * Query: role?, email?, full_name?, page?, limit?
  */
-router.get('/users', AdminUserController.listUsers);
+router.get('/users', adminUserController.listUsers);
 
 /**
  * PATCH /admin/users/:id/status
@@ -31,7 +33,7 @@ router.get('/users', AdminUserController.listUsers);
 router.patch(
   '/users/:id/status',
   validateDto(UpdateUserStatusDto),
-  AdminUserController.updateLockStatus,
+  adminUserController.updateLockStatus,
 );
 
 /**
@@ -42,7 +44,7 @@ router.patch(
 router.patch(
   '/users/:id/role',
   validateDto(UpdateUserRoleDto),
-  AdminUserController.updateRole,
+  adminUserController.updateRole,
 );
 
 /**
@@ -53,7 +55,7 @@ router.patch(
 router.post(
   '/users/:id/reset-password',
   validateDto(ResetPasswordDto),
-  AdminUserController.resetPassword,
+  adminUserController.resetPassword,
 );
 
 // ─── Quản lý khách hàng ─────────────────────────────────────────────────────
@@ -62,6 +64,6 @@ router.post(
  * GET /admin/customers/:id/summary
  * Hồ sơ khách hàng: thông tin cá nhân + tổng đơn hàng + tổng chi tiêu.
  */
-router.get('/customers/:id/summary', AdminUserController.getCustomerSummary);
+router.get('/customers/:id/summary', adminUserController.getCustomerSummary);
 
 export default router;

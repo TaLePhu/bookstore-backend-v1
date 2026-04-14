@@ -1,17 +1,19 @@
 import { Request, Response, NextFunction } from 'express';
+import { injectable } from 'tsyringe';
 import { AdminUserService } from '@services/AdminUserService';
 import { AdminUserFilter } from '@repositories/interfaces/IAdminUserRepository';
 import { Role } from '@entities/User';
 import { sendSuccess } from '@utils/response';
 
-const adminUserService = new AdminUserService();
-
+@injectable()
 export class AdminUserController {
+  constructor(private adminUserService: AdminUserService) {}
+
   /**
    * GET /admin/users
    * Query params: role?, email?, full_name?, page?, limit?
    */
-  static async listUsers(req: Request, res: Response, next: NextFunction): Promise<void> {
+  listUsers = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { role, email, full_name, page, limit } = req.query;
 
@@ -23,81 +25,81 @@ export class AdminUserController {
         limit:    limit    ? parseInt(limit as string, 10) : 10,
       };
 
-      const result = await adminUserService.listUsers(filter);
+      const result = await this.adminUserService.listUsers(filter);
 
       sendSuccess(res, result, 'Lấy danh sách người dùng thành công');
     } catch (error) {
       next(error);
     }
-  }
+  };
 
   /**
    * PATCH /admin/users/:id/status
    * Body: { isLocked: boolean }
    */
-  static async updateLockStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
+  updateLockStatus = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id }       = req.params;
       const { isLocked } = req.body;
       const adminId      = (req as any).user.userId as string;
 
-      const user = await adminUserService.updateLockStatus(id, isLocked, adminId);
+      const user = await this.adminUserService.updateLockStatus(id, isLocked, adminId);
 
       const action = isLocked ? 'Khoá tài khoản' : 'Mở khoá tài khoản';
       sendSuccess(res, user, `${action} thành công`);
     } catch (error) {
       next(error);
     }
-  }
+  };
 
   /**
    * PATCH /admin/users/:id/role
    * Body: { role: Role }
    */
-  static async updateRole(req: Request, res: Response, next: NextFunction): Promise<void> {
+  updateRole = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id }   = req.params;
       const { role } = req.body;
       const adminId  = (req as any).user.userId as string;
 
-      const user = await adminUserService.updateRole(id, role, adminId);
+      const user = await this.adminUserService.updateRole(id, role, adminId);
 
       sendSuccess(res, user, `Cấp quyền ${role} thành công`);
     } catch (error) {
       next(error);
     }
-  }
+  };
 
   /**
    * POST /admin/users/:id/reset-password
    * Body: { newPassword: string }
    */
-  static async resetPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+  resetPassword = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id }          = req.params;
       const { newPassword } = req.body;
 
-      const result = await adminUserService.resetPassword(id, newPassword);
+      const result = await this.adminUserService.resetPassword(id, newPassword);
 
       sendSuccess(res, null, result.message);
     } catch (error) {
       next(error);
     }
-  }
+  };
 
   /**
    * GET /admin/customers/:id/summary
    * Hồ sơ khách hàng + tổng đơn + tổng chi tiêu (Query Builder)
    */
-  static async getCustomerSummary(req: Request, res: Response, next: NextFunction): Promise<void> {
+  getCustomerSummary = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id } = req.params;
 
-      const summary = await adminUserService.getCustomerSummary(id);
+      const summary = await this.adminUserService.getCustomerSummary(id);
 
       sendSuccess(res, summary, 'Lấy hồ sơ khách hàng thành công');
     } catch (error) {
       next(error);
     }
-  }
+  };
 }
