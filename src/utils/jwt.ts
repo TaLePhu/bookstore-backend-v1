@@ -11,10 +11,12 @@ export interface TokenPayload {
 
 export class TokenHelper {
   private static env = getEnv();
+  private static readonly JWT_ALGORITHM = 'HS256' as const;
 
   static generateAccessToken(payload: Omit<TokenPayload, 'iat' | 'exp'>): string {
     const options: SignOptions = {
       expiresIn: this.env.jwt.accessExpiresIn as any,
+      algorithm: this.JWT_ALGORITHM,
     };
     return jwt.sign(payload, this.env.jwt.accessSecret, options);
   }
@@ -22,13 +24,16 @@ export class TokenHelper {
   static generateRefreshToken(payload: Omit<TokenPayload, 'iat' | 'exp'>): string {
     const options: SignOptions = {
       expiresIn: this.env.jwt.refreshExpiresIn as any,
+      algorithm: this.JWT_ALGORITHM,
     };
     return jwt.sign(payload, this.env.jwt.refreshSecret, options);
   }
 
   static verifyAccessToken(token: string): TokenPayload {
     try {
-      return jwt.verify(token, this.env.jwt.accessSecret) as TokenPayload;
+      return jwt.verify(token, this.env.jwt.accessSecret, {
+        algorithms: [this.JWT_ALGORITHM],
+      }) as TokenPayload;
     } catch (error) {
       throw new Error('Invalid access token');
     }
@@ -36,7 +41,9 @@ export class TokenHelper {
 
   static verifyRefreshToken(token: string): TokenPayload {
     try {
-      return jwt.verify(token, this.env.jwt.refreshSecret) as TokenPayload;
+      return jwt.verify(token, this.env.jwt.refreshSecret, {
+        algorithms: [this.JWT_ALGORITHM],
+      }) as TokenPayload;
     } catch (error) {
       throw new Error('Invalid refresh token');
     }

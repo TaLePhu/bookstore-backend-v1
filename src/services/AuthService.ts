@@ -1,4 +1,5 @@
 import { injectable, inject } from 'tsyringe';
+import { randomInt } from 'crypto';
 import { RegisterDto } from '@dtos/auth/RegisterDto';
 import { LoginDto } from '@dtos/auth/LoginDto';
 import { VerifyEmailDto } from '@dtos/auth/VerifyEmailDto';
@@ -24,6 +25,9 @@ export interface AuthResponse {
 
 @injectable()
 export class AuthService {
+  private static readonly VERIFY_CODE_TTL_SECONDS = 15 * 60;
+  private static readonly VERIFY_MAX_ATTEMPTS = 5;
+
   constructor(
     @inject(TOKENS.USER_REPOSITORY) private userRepository: IUserRepository,
     @inject(TOKENS.REFRESH_TOKEN_REPOSITORY) private refreshTokenRepository: IRefreshTokenRepository
@@ -48,11 +52,16 @@ export class AuthService {
       isVerified: false,
     } as any);
 
-    // Generate 4 digit code
-    const verificationCode = Math.floor(1000 + Math.random() * 9000).toString();
+    // Generate 6 digit code using cryptographically secure randomness
+    const verificationCode = randomInt(100000, 1000000).toString();
     
     // Save to Redis (expires in 15 mins)
-    await redisConfig.setex(`verify_code:${data.email}`, 15 * 60, verificationCode);
+    await redisConfig.setex(
+      `verify_code:${data.email}`,
+      AuthService.VERIFY_CODE_TTL_SECONDS,
+      verificationCode
+    );
+    await redisConfig.del(`verify_attempts:${data.email}`);
     
     // Push to email queue
     await emailQueue.add('sendVerificationCode', {
@@ -68,10 +77,25 @@ export class AuthService {
 
   async verifyEmail(data: VerifyEmailDto): Promise<AuthResponse> {
     const { email, code } = data;
-    
-    // Check redis
+    const attemptsKey = `verify_attempts:${email}`;
     const storedCode = await redisConfig.get(`verify_code:${email}`);
-    if (!storedCode || storedCode !== code) {
+
+    if (!storedCode) {
+      throw new UnauthorizedError('Mã xác thực không hợp lệ hoặc đã hết hạn');
+    }
+
+    if (storedCode !== code) {
+      const attempts = await redisConfig.incr(attemptsKey);
+      if (attempts === 1) {
+        await redisConfig.expire(attemptsKey, AuthService.VERIFY_CODE_TTL_SECONDS);
+      }
+
+      if (attempts >= AuthService.VERIFY_MAX_ATTEMPTS) {
+        await redisConfig.del(`verify_code:${email}`);
+        await redisConfig.del(attemptsKey);
+        throw new UnauthorizedError('Bạn đã nhập sai mã xác thực quá số lần cho phép. Vui lòng đăng ký lại để nhận mã mới.');
+      }
+
       throw new UnauthorizedError('Mã xác thực không hợp lệ hoặc đã hết hạn');
     }
     
@@ -86,6 +110,7 @@ export class AuthService {
     
     // Remove code from redis
     await redisConfig.del(`verify_code:${email}`);
+    await redisConfig.del(attemptsKey);
     
     // Generate tokens
     const accessToken = TokenHelper.generateAccessToken({
