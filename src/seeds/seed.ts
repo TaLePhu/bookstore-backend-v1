@@ -14,17 +14,34 @@ import { Payment, PaymentMethod, PaymentStatus } from '../entities/Payment';
 import { UserBehavior, BehaviorType } from '../entities/UserBehavior';
 import * as bcrypt from 'bcryptjs';
 
-async function seed() {
-  await AppDataSource.initialize();
+type SeedOptions = {
+  initializeDataSource?: boolean;
+  destroyDataSource?: boolean;
+  cleanupBeforeSeed?: boolean;
+};
+
+export async function runSeed(options: SeedOptions = {}) {
+  const {
+    initializeDataSource = true,
+    destroyDataSource = true,
+    cleanupBeforeSeed = true,
+  } = options;
+
+  if (initializeDataSource && !AppDataSource.isInitialized) {
+    await AppDataSource.initialize();
+  }
+
   console.log('🌱 Bắt đầu seed Database...');
 
-  const queryRunner = AppDataSource.createQueryRunner();
-  await queryRunner.connect();
+  if (cleanupBeforeSeed) {
+    const queryRunner = AppDataSource.createQueryRunner();
+    await queryRunner.connect();
 
-  console.log('🗑️ Xóa dữ liệu rác cũ...');
-  await queryRunner.query(`TRUNCATE TABLE categories CASCADE`);
-  await queryRunner.query(`TRUNCATE TABLE users CASCADE`);
-  await queryRunner.release();
+    console.log('🗑️ Xóa dữ liệu rác cũ...');
+    await queryRunner.query(`TRUNCATE TABLE categories CASCADE`);
+    await queryRunner.query(`TRUNCATE TABLE users CASCADE`);
+    await queryRunner.release();
+  }
 
   // 1. Tạo Users
   console.log('👤 Tạo Users...');
@@ -190,10 +207,14 @@ async function seed() {
   }
 
   console.log('✅✅ Hoàn tất Seed Database thành công!');
-  await AppDataSource.destroy();
+  if (destroyDataSource && AppDataSource.isInitialized) {
+    await AppDataSource.destroy();
+  }
 }
 
-seed().catch(err => {
-  console.error('❌ Lỗi khi seed data:', err);
-  process.exit(1);
-});
+if (require.main === module) {
+  runSeed().catch(err => {
+    console.error('❌ Lỗi khi seed data:', err);
+    process.exit(1);
+  });
+}
