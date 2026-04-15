@@ -1,0 +1,233 @@
+# Tài Liệu API BookStore (Tiếng Việt)
+
+Tài liệu này là nguồn chính để frontend-backend giao tiếp.
+
+## 1) Tổng quan
+
+- Base URL: `http://localhost:3000/api/v1`
+- Health check: `GET /health`
+- Auth: Bearer token cho các endpoint protected.
+- Định dạng response cố gắng đồng nhất theo `{ success, data, message }`.
+
+## 2) Xác thực
+
+### Header access token
+
+```http
+Authorization: Bearer <accessToken>
+```
+
+### Luồng cơ bản
+
+1. Đăng ký (`/auth/register`)
+2. Xác thực email (`/auth/verify-email`) hoặc gửi lại mã (`/auth/resend-code`)
+3. Đăng nhập (`/auth/login`)
+4. Làm mới token (`/auth/refresh-token`)
+5. Đăng xuất (`/auth/logout`)
+
+### Ghi chú rate limit
+
+- `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh-token`, `POST /auth/resend-code`:
+  - 10 requests / 15 phút / IP
+- `POST /auth/verify-email`:
+  - 5 requests / 15 phút / IP
+
+## 3) Chuẩn response và lỗi
+
+### Success response (mẫu)
+
+```json
+{
+  "success": true,
+  "data": {},
+  "message": "Success"
+}
+```
+
+### Error response (mẫu)
+
+```json
+{
+  "success": false,
+  "message": "Error message",
+  "data": {}
+}
+```
+
+### HTTP status thường gặp
+
+- `200`: OK
+- `201`: Created
+- `400`: Bad request / validation
+- `401`: Unauthorized
+- `403`: Forbidden
+- `404`: Not found
+- `409`: Conflict
+- `429`: Too many requests
+- `500`: Internal server error
+
+## 4) Ma trận endpoint cho frontend
+
+### 4.1 Auth
+
+| Method | Path | Auth | Body | Mô tả |
+|---|---|---|---|---|
+| POST | /auth/register | No | `userName`, `email`, `password` | Đăng ký tài khoản mới |
+| POST | /auth/verify-email | No | `email`, `code` | Xác thực email bằng mã 6 ký tự |
+| POST | /auth/resend-code | No | `email` | Gửi lại mã xác thực |
+| POST | /auth/login | No | `email`, `password` | Đăng nhập, trả về token |
+| POST | /auth/refresh-token | No | `refreshToken` | Cấp access token mới |
+| POST | /auth/logout | Yes | none | Đăng xuất người dùng hiện tại |
+
+### 4.2 Books
+
+| Method | Path | Auth | Query | Mô tả |
+|---|---|---|---|---|
+| GET | /books | No | `page`, `limit` | Danh sách sách có phân trang |
+| GET | /books/search | No | `q`, `page`, `limit` | Tìm kiếm sách |
+| GET | /books/:id | No | none | Chi tiết sách theo UUID |
+
+### 4.3 Categories
+
+| Method | Path | Auth | Mô tả |
+|---|---|---|---|
+| GET | /categories | No | Danh sách thể loại sách |
+
+### 4.4 Cart (protected)
+
+| Method | Path | Auth | Body | Mô tả |
+|---|---|---|---|---|
+| GET | /cart | Yes | none | Lấy giỏ hàng của user |
+| POST | /cart/add | Yes | `bookId`, `quantity` | Thêm sách vào giỏ |
+| PUT | /cart/update/:itemId | Yes | `quantity` | Cập nhật số lượng item |
+| DELETE | /cart/remove/:itemId | Yes | none | Xóa item khỏi giỏ |
+
+### 4.5 Orders (protected)
+
+| Method | Path | Auth | Body/Query | Mô tả |
+|---|---|---|---|---|
+| POST | /orders | Yes | Body: `addressId`, `shippingFee?`, `note?` | Tạo đơn hàng từ giỏ |
+| GET | /orders/my | Yes | Query: `page`, `limit` | Danh sách đơn của tôi |
+| GET | /orders/:id | Yes | none | Chi tiết đơn của tôi |
+
+### 4.6 Users (protected)
+
+| Method | Path | Auth | Body | Mô tả |
+|---|---|---|---|---|
+| GET | /users/me | Yes | none | Thông tin cá nhân |
+| PATCH | /users/me | Yes | `avatar?`, `fullName?`, `dob?`, `gender?`, `phone?`, `address?` | Cập nhật profile |
+| PUT | /users/change-password | Yes | `oldPassword`, `newPassword` | Đổi mật khẩu |
+
+### 4.7 Admin (protected + role ADMIN)
+
+| Method | Path | Auth | Body/Query | Mô tả |
+|---|---|---|---|---|
+| GET | /admin/users | Yes (ADMIN) | Query: `role?`, `email?`, `full_name?`, `page?`, `limit?` | Danh sách user có bộ lọc |
+| PATCH | /admin/users/:id/status | Yes (ADMIN) | Body: `isLocked` | Khóa/mở khóa tài khoản |
+| PATCH | /admin/users/:id/role | Yes (ADMIN) | Body: `role` | Cấp role cho user |
+| POST | /admin/users/:id/reset-password | Yes (ADMIN) | Body: `newPassword` | Đặt lại mật khẩu user |
+| GET | /admin/customers/:id/summary | Yes (ADMIN) | none | Tổng quan khách hàng |
+
+## 5) Validation rules chính
+
+### Auth
+
+- Register:
+  - `userName`: min 2, max 255
+  - `email`: valid email
+  - `password`: min 8, max 255, phải có chữ thường + chữ hoa + số
+- Verify email:
+  - `code`: đúng 6 ký tự
+
+### Cart
+
+- Add to cart:
+  - `bookId`: UUID v4
+  - `quantity`: integer, >= 1
+- Update cart item:
+  - `quantity`: integer, >= 1
+
+### Order
+
+- `addressId`: UUID v4
+- `shippingFee` (optional): number >= 0
+- `note` (optional): string max 500
+
+### User
+
+- Update profile:
+  - `fullName`: min 2, max 255 (optional)
+  - `dob`: valid date string (optional)
+- Change password:
+  - `newPassword`: min 6, max 255
+
+### Admin
+
+- Update status: `isLocked` phải là boolean
+- Update role: `role` trong enum (`ADMIN`, `STAFF`, `CUSTOMER`, `GUEST`) Note: Bỏ 'Guest'
+- Reset password: min 8 và phải có chữ hoa + chữ thường + số
+
+## 6) Ví dụ request nhanh
+
+### Login
+
+```http
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "user1@example.com",
+  "password": "Ptest123"
+}
+```
+
+### Add to cart
+
+```http
+POST {{baseUrl}}/cart/add
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{
+  "bookId": "9166b665-fb29-4383-a8ea-6c4efaaf44b1",
+  "quantity": 2
+}
+```
+
+### Create order
+
+```http
+POST {{baseUrl}}/orders
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{
+  "addressId": "b9fbc7be-4b6d-4ab7-99ad-9271f4664c6a",
+  "shippingFee": 15000,
+  "note": "Giao giờ hành chính"
+}
+```
+
+## 7) Hướng dẫn cho frontend
+
+- Luôn xử lý `401` để chuyển qua flow refresh token.
+- Nếu refresh fail, logout local và điều hướng về login.
+- Với list endpoint, backend giới hạn `limit` tối đa 50.
+- Với auth endpoint, cần xử lý `429` và thông báo người dùng chờ đợi.
+
+## 8) Tài liệu liên quan
+
+- Postman collection: `postman-collections/1404_BookStoreAPI.postman_collection.json`
+- README index: `README.md`
+- Route source:
+  - `src/routes/auth.routes.ts`
+  - `src/routes/book.routes.ts`
+  - `src/routes/category.routes.ts`
+  - `src/routes/cart.routes.ts`
+  - `src/routes/order.routes.ts`
+  - `src/routes/user.routes.ts`
+  - `src/routes/admin.routes.ts`
+
+## 9) Lưu ý cập nhật
+
+Mỗi thay đổi endpoint/DTO phải cập nhật file này và Postman collection cùng lúc.
