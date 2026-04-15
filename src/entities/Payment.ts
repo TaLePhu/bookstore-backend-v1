@@ -14,6 +14,7 @@ export enum PaymentMethod {
   DEBIT_CARD = 'DEBIT_CARD',
   BANK_TRANSFER = 'BANK_TRANSFER',
   WALLET = 'WALLET',
+  COD = 'COD',
 }
 
 export enum PaymentStatus {

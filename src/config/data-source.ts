@@ -27,6 +27,7 @@ import { CreateUserAdvances1710000000003 } from '../migrations/1710000000003-Cre
 import { AddBookDetails1775747431811 } from '../migrations/1775747431811-AddBookDetails';
 import { UpdateOrderFields1775921700962 } from '../migrations/1775921700962-UpdateOrderFields';
 import { AddIsLockedToUsers1775999000000 } from '../migrations/1775999000000-AddIsLockedToUsers';
+import { UpdateAddressAndPaymentFields1776241539788 } from '@/migrations/1776241539788-UpdateAddressAndPaymentFields';
 
 const env = getEnv();
 
@@ -64,6 +65,7 @@ export const AppDataSource = new DataSource({
     AddBookDetails1775747431811,
     UpdateOrderFields1775921700962,
     AddIsLockedToUsers1775999000000,
+    UpdateAddressAndPaymentFields1776241539788
   ],
   subscribers: [],
   cache: false,

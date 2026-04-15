@@ -19,9 +19,6 @@ export class UserAdvance {
   @Column('varchar', { length: 20, nullable: true })
   phone: string;
 
-  @Column('text', { nullable: true })
-  address: string;
-
   @CreateDateColumn()
   createdAt: Date;
 

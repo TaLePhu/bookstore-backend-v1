@@ -16,8 +16,26 @@ export class Address {
   @Column('varchar', { length: 500 })
   addressLine: string;
 
-  @Column('varchar', { length: 100 })
-  city: string;
+  @Column('varchar', { length: 100, default: 'Việt Nam' })
+  country: string;
+
+  @Column('varchar', { length: 50, nullable: true })
+  provinceCode: string;
+
+  @Column('varchar', { length: 100, nullable: true })
+  provinceName: string;
+
+  @Column('varchar', { length: 50, nullable: true })
+  districtCode: string;
+
+  @Column('varchar', { length: 100, nullable: true })
+  districtName: string;
+
+  @Column('varchar', { length: 50, nullable: true })
+  wardCode: string;
+
+  @Column('varchar', { length: 100, nullable: true })
+  wardName: string;
 
   @CreateDateColumn()
   createdAt: Date;

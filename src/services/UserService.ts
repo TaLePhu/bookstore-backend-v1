@@ -22,7 +22,6 @@ export interface UserProfileResponse {
   dob?: Date;
   gender?: string;
   phone?: string;
-  address?: string;
   createdAt: Date;
 }
 
@@ -53,7 +52,7 @@ export class UserService {
     }
 
     // Process user advance fields
-    const advanceFields = ['avatar', 'dob', 'gender', 'phone', 'address'];
+    const advanceFields = ['avatar', 'dob', 'gender', 'phone'];
     const hasAdvanceUpdate = advanceFields.some((field) => data[field as keyof UpdateProfileDto] !== undefined);
 
     if (hasAdvanceUpdate) {
@@ -65,7 +64,6 @@ export class UserService {
       if (data.dob !== undefined) user.userAdvance.dob = new Date(data.dob);
       if (data.gender !== undefined) user.userAdvance.gender = data.gender;
       if (data.phone !== undefined) user.userAdvance.phone = data.phone;
-      if (data.address !== undefined) user.userAdvance.address = data.address;
     }
 
     const updatedUser = await this.userRepository.update(userId, user);
@@ -139,7 +137,6 @@ export class UserService {
       dob: user.userAdvance?.dob,
       gender: user.userAdvance?.gender,
       phone: user.userAdvance?.phone,
-      address: user.userAdvance?.address,
       createdAt: user.createdAt,
     };
   }

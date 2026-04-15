@@ -115,7 +115,6 @@ export class AdminUserRepository implements IAdminUserRepository {
       isVerified:   user.isVerified,
       isLocked:     user.isLocked,
       phone:        user.userAdvance?.phone   ?? null,
-      address:      user.userAdvance?.address ?? null,
       avatar:       user.userAdvance?.avatar  ?? null,
       createdAt:    user.createdAt,
       totalOrders:  parseInt(raw.totalOrders ?? '0', 10),

@@ -25,7 +25,6 @@ export interface CustomerSummary {
   isVerified: boolean;
   isLocked: boolean;
   phone: string | null;
-  address: string | null;
   avatar: string | null;
   createdAt: Date;
   totalOrders: number;

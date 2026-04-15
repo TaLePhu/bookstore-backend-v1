@@ -5,6 +5,7 @@ import { OrderItem } from '@entities/OrderItem';
 import { Book } from '@entities/Book';
 import { CartItem } from '@entities/CartItem';
 import { Address } from '@entities/Address';
+import { Payment, PaymentMethod, PaymentStatus } from '@entities/Payment';
 import { Cart } from '@entities/Cart';
 import { IOrderRepository } from '@repositories/interfaces/IOrderRepository';
 import { ICartRepository } from '@repositories/interfaces/ICartRepository';
@@ -33,31 +34,72 @@ export class OrderService {
       throw new AppError('Giỏ hàng của bạn đang rỗng', 400);
     }
 
-    // 2. Kiểm tra Address thuộc về user (query ngoài transaction là OK vì chỉ đọc)
-    const addressRepo = AppDataSource.getRepository(Address);
-    const address = await addressRepo.findOne({
-      where: { id: dto.addressId, userId },
-    });
-
-    if (!address) {
-      throw new NotFoundError('Địa chỉ không tồn tại hoặc không thuộc về bạn');
+    // 2. Validate CartItems: If cartItemIds is provided, check if these items exist in cart
+    let orderItemsData = cart.items;
+    if (dto.cartItemIds && dto.cartItemIds.length > 0) {
+      orderItemsData = cart.items.filter((item) => dto.cartItemIds!.includes(item.id));
+      if (orderItemsData.length !== dto.cartItemIds.length) {
+        throw new AppError('Một số sản phẩm không tồn tại trong giỏ hàng', 400);
+      }
     }
 
-    // 3-7. Transaction: khóa stock, tạo Order, trừ stock, xoá CartItems
+    // 3. Resolve Address
+    const addressRepo = AppDataSource.getRepository(Address);
+    let addressId = dto.addressId;
+    if (addressId) {
+      const address = await addressRepo.findOne({
+        where: { id: addressId, userId },
+      });
+      if (!address) {
+        throw new NotFoundError('Địa chỉ không tồn tại hoặc không thuộc về bạn');
+      }
+    } else {
+      // Validate inline address
+      if (!dto.addressLine || !dto.phone || !dto.receiverName) {
+        throw new AppError('Vui lòng cung cấp cả addressId hoặc thông tin địa chỉ đầy đủ (addressLine, phone, receiverName)', 400);
+      }
+      const newAddress = addressRepo.create({
+        userId,
+        country: dto.country ?? 'VN',
+        provinceCode: dto.provinceCode,
+        provinceName: dto.provinceName,
+        districtCode: dto.districtCode,
+        districtName: dto.districtName,
+        wardCode: dto.wardCode,
+        wardName: dto.wardName,
+        addressLine: dto.addressLine,
+        phone: dto.phone,
+        receiverName: dto.receiverName,
+      });
+      const savedAddress = await addressRepo.save(newAddress);
+      addressId = savedAddress.id;
+    }
+
+    // 4. Transaction: khóa stock, tạo Order, trừ stock, xoá phần cartItems tương ứng
     const savedOrder = await AppDataSource.transaction(async (manager: EntityManager) => {
+      // Reload cart items trong transaction
       const txCart = await manager.findOne(Cart, {
         where: { id: cart.id, userId },
         relations: ['items'],
       });
 
       if (!txCart || !txCart.items || txCart.items.length === 0) {
-        throw new AppError('Giỏ hàng của bạn đang rỗng', 400);
+        throw new AppError('Giỏ hàng không hợp lệ', 400);
+      }
+
+      // Xác định các cart items sẽ checkout
+      const txOrderItems = dto.cartItemIds && dto.cartItemIds.length > 0
+        ? txCart.items.filter((item) => dto.cartItemIds!.includes(item.id))
+        : txCart.items;
+
+      if (txOrderItems.length === 0) {
+        throw new AppError('Không có sản phẩm nào để thanh toán', 400);
       }
 
       const shippingFee = dto.shippingFee ?? 0;
       const itemsData: Array<{ bookId: string; quantity: number; price: number; subTotal: number }> = [];
 
-      for (const cartItem of txCart.items) {
+      for (const cartItem of txOrderItems) {
         const lockedBook = await manager.findOne(Book, {
           where: { id: cartItem.bookId },
           lock: { mode: 'pessimistic_write' },
@@ -85,10 +127,10 @@ export class OrderService {
 
       const totalAmount = itemsData.reduce((sum, item) => sum + item.subTotal, 0) + shippingFee;
 
-      // 5a. Tạo Order entity
+      // Tạo Order entity nối với Payment
       const order = manager.create(Order, {
         userId,
-        addressId: dto.addressId,
+        addressId: addressId!,
         totalAmount,
         shippingFee,
         note: dto.note ?? null,
@@ -96,7 +138,17 @@ export class OrderService {
       });
       const createdOrder = await manager.save(Order, order);
 
-      // 5b. Tạo OrderItems (cascade lưu cùng order)
+      // Tạo Payment record
+      const paymentMethod = dto.paymentMethod ?? PaymentMethod.COD;
+      const payment = manager.create(Payment, {
+        orderId: createdOrder.id,
+        amount: totalAmount,
+        method: paymentMethod,
+        status: PaymentStatus.PENDING,
+      });
+      await manager.save(Payment, payment);
+
+      // Tạo OrderItems (cascade lưu cùng order)
       const orderItems = itemsData.map((item) =>
         manager.create(OrderItem, {
           orderId: createdOrder.id,
@@ -108,13 +160,15 @@ export class OrderService {
       );
       await manager.save(OrderItem, orderItems);
 
-      // 6. Trừ stock của từng Book
+      // Trừ stock của từng Book
       for (const item of itemsData) {
         await manager.decrement(Book, { id: item.bookId }, 'stock', item.quantity);
       }
 
-      // 7. Xoá toàn bộ CartItems của cart (giỏ hàng trở về rỗng)
-      await manager.delete(CartItem, { cartId: txCart.id });
+      // Xoá các CartItems đã thanh toán
+      for (const cartItem of txOrderItems) {
+        await manager.delete(CartItem, { id: cartItem.id });
+      }
 
       return createdOrder;
     });

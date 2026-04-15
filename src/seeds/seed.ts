@@ -59,7 +59,6 @@ export async function runSeed(options: SeedOptions = {}) {
 
     const userAdvance = new UserAdvance();
     userAdvance.phone = `090123456${i}`;
-    userAdvance.address = `123 Đường Số ${i}, TP. HCM`;
     userAdvance.gender = i % 2 === 0 ? 'Nữ' : 'Nam';
     user.userAdvance = userAdvance;
 
@@ -73,10 +72,12 @@ export async function runSeed(options: SeedOptions = {}) {
   for (let i = 0; i < 5; i++) {
     const addr = new Address();
     addr.user = users[i];
+    addr.userId = users[i].id;
     addr.receiverName = `Người nhận ${i + 1}`;
     addr.phone = `090123456${i}`;
     addr.addressLine = `${i + 1}/10 Nguyễn Trãi`;
-    addr.city = 'Hồ Chí Minh';
+    addr.country = 'Vietnam';
+    addr.provinceName = 'Hồ Chí Minh';
     addresses.push(await addressRepo.save(addr));
   }
 
