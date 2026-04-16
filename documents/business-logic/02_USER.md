@@ -15,7 +15,7 @@ Feature User quản lý hồ sơ cá nhân, thông tin mở rộng và đổi m�
 3. Trả về thông tin cơ bản và thông tin mở rộng nếu có.
 
 ### 3.2 Cập nhật hồ sơ
-1. Người dùng gửi các trường cập nhật như fullName, avatar, dob, gender, phone, address.
+1. Người dùng gửi các trường cập nhật như fullName, avatar, dob, gender, phone.
 2. Hệ thống tải user hiện tại kèm userAdvance.
 3. fullName được cập nhật trực tiếp trên user.
 4. Các trường mở rộng được cập nhật trên userAdvance; nếu chưa có bản ghi thì hệ thống tạo mới.
@@ -35,6 +35,8 @@ Feature User quản lý hồ sơ cá nhân, thông tin mở rộng và đổi m�
 - userAdvance là phần mở rộng, có thể chưa tồn tại ở thời điểm user mới tạo.
 - Thay đổi mật khẩu phải làm vô hiệu toàn bộ phiên đăng nhập cũ.
 - Các trường profile cập nhật theo kiểu overwrite, không phải merge phức tạp theo lịch sử.
+- Trường địa chỉ giao hàng không còn nằm trong profile update; địa chỉ được quản lý riêng trong bảng `addresses`.
+- Một user có thể có nhiều địa chỉ và order sẽ resolve theo `addressId` hoặc inline address tại thời điểm checkout.
 
 ## 5. Side effect và trạng thái
 - Cập nhật profile có thể tạo mới userAdvance nếu trước đó chưa có.
@@ -53,3 +55,4 @@ Feature User quản lý hồ sơ cá nhân, thông tin mở rộng và đổi m�
 - [src/dtos/user/UpdateProfileDto.ts](../../src/dtos/user/UpdateProfileDto.ts)
 - [src/dtos/user/ChangePasswordDto.ts](../../src/dtos/user/ChangePasswordDto.ts)
 - [src/entities/UserAdvance.ts](../../src/entities/UserAdvance.ts)
+- [src/entities/Address.ts](../../src/entities/Address.ts)

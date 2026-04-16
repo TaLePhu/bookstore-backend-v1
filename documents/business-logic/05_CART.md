@@ -35,15 +35,22 @@ Feature Cart quản lý giỏ hàng hiện tại của user, gồm xem giỏ, th
 3. Hệ thống kiểm tra quyền sở hữu với cart hiện tại.
 4. Nếu hợp lệ thì xoá item khỏi giỏ và trả về giỏ mới nhất.
 
+### 3.5 Liên thông checkout từng phần (partial checkout)
+1. Ở bước tạo order, user có thể truyền `cartItemIds` để chọn một phần item trong giỏ.
+2. Chỉ những item được chọn mới bị xoá khỏi cart sau khi checkout thành công.
+3. Các item còn lại tiếp tục nằm trong cart active để user checkout ở lần sau.
+
 ## 4. Ràng buộc nghiệp vụ
 - Không được thêm hoặc cập nhật vượt quá stock hiện tại của sách.
 - Một sách đã tồn tại trong giỏ thì số lượng được cộng dồn thay vì tạo dòng trùng.
 - Item chỉ được sửa bởi đúng chủ sở hữu của cart.
 - Giỏ rỗng vẫn được xem là một cart hợp lệ.
+- Cart phải giữ trạng thái nhất quán sau partial checkout: chỉ các item đã thanh toán mới bị loại bỏ.
 
 ## 5. Side effect và trạng thái
 - Thêm, cập nhật hoặc xoá item đều làm thay đổi state của cart active.
 - Khi quantity <= 0, item bị loại khỏi giỏ thay vì giữ bản ghi số lượng âm hoặc bằng 0.
+- Checkout thành công từ OrderService có thể làm cart giảm một phần hoặc về rỗng, tùy số item được chọn thanh toán.
 
 ## 6. Điểm cần lưu ý khi test
 - Thêm sách không tồn tại phải trả lỗi không tìm thấy.
@@ -51,6 +58,7 @@ Feature Cart quản lý giỏ hàng hiện tại của user, gồm xem giỏ, th
 - Cùng một sách nhiều lần phải cộng dồn quantity đúng cách.
 - Cập nhật item của cart khác phải bị từ chối.
 - quantity = 0 phải dẫn tới xoá item.
+- Partial checkout chỉ được xoá đúng các cartItemIds đã chọn, không xoá toàn bộ cart ngoài ý muốn.
 
 ## 7. File liên quan
 - [src/services/CartService.ts](../../src/services/CartService.ts)

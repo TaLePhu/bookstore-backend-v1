@@ -106,16 +106,21 @@ Authorization: Bearer <accessToken>
 
 | Method | Path | Auth | Body/Query | Mô tả |
 |---|---|---|---|---|
-| POST | /orders | Yes | Body: `addressId`, `shippingFee?`, `note?` | Tạo đơn hàng từ giỏ |
+| POST | /orders | Yes | Body: `addressId?`, `cartItemIds?`, `country?`, `provinceCode?`, `provinceName?`, `districtCode?`, `districtName?`, `wardCode?`, `wardName?`, `addressLine?`, `phone?`, `receiverName?`, `paymentMethod?`, `shippingFee?`, `note?` | Tạo đơn hàng từ giỏ (hỗ trợ checkout toàn bộ hoặc từng phần) |
 | GET | /orders/my | Yes | Query: `page`, `limit` | Danh sách đơn của tôi |
 | GET | /orders/:id | Yes | none | Chi tiết đơn của tôi |
+
+Ghi chú cho `POST /orders`:
+- Có thể checkout toàn bộ giỏ (không truyền `cartItemIds`) hoặc checkout từng phần (truyền `cartItemIds`).
+- Rule địa chỉ: cần có `addressId` hoặc đủ bộ inline address tối thiểu `addressLine`, `phone`, `receiverName`.
+- `paymentMethod` hỗ trợ: `CREDIT_CARD`, `DEBIT_CARD`, `BANK_TRANSFER`, `WALLET`, `COD` (mặc định `COD`).
 
 ### 4.6 Users (protected)
 
 | Method | Path | Auth | Body | Mô tả |
 |---|---|---|---|---|
 | GET | /users/me | Yes | none | Thông tin cá nhân |
-| PATCH | /users/me | Yes | `avatar?`, `fullName?`, `dob?`, `gender?`, `phone?`, `address?` | Cập nhật profile |
+| PATCH | /users/me | Yes | `avatar?`, `fullName?`, `dob?`, `gender?`, `phone?` | Cập nhật profile |
 | PUT | /users/change-password | Yes | `oldPassword`, `newPassword` | Đổi mật khẩu |
 
 ### 4.7 Admin (protected + role ADMIN)
@@ -149,7 +154,12 @@ Authorization: Bearer <accessToken>
 
 ### Order
 
-- `addressId`: UUID v4
+- `addressId`: UUID v4 (optional)
+- `cartItemIds`: Array UUID v4 (optional, để trống = checkout toàn bộ cart)
+- Inline address:
+  - Nếu không truyền `addressId` thì bắt buộc có `addressLine`, `phone`, `receiverName`
+  - Có thể truyền thêm `country`, `provinceCode`, `provinceName`, `districtCode`, `districtName`, `wardCode`, `wardName`
+- `paymentMethod`: enum (`CREDIT_CARD`, `DEBIT_CARD`, `BANK_TRANSFER`, `WALLET`, `COD`)
 - `shippingFee` (optional): number >= 0
 - `note` (optional): string max 500
 
@@ -202,9 +212,20 @@ Authorization: Bearer <accessToken>
 Content-Type: application/json
 
 {
-  "addressId": "b9fbc7be-4b6d-4ab7-99ad-9271f4664c6a",
-  "shippingFee": 15000,
-  "note": "Giao giờ hành chính"
+  "cartItemIds": [
+    "uuid-cua-cart-item-1",
+    "uuid-cua-cart-item-2"
+  ],
+  "country": "VN",
+  "provinceName": "Ho Chi Minh",
+  "districtName": "Quan 1",
+  "wardName": "Ben Nghe",
+  "addressLine": "123 Duong So 1, Chung cu B",
+  "phone": "0901234567",
+  "receiverName": "Nguyen Van A",
+  "paymentMethod": "COD",
+  "shippingFee": 30000,
+  "note": "Giao vao gio hanh chinh"
 }
 ```
 
