@@ -85,7 +85,15 @@ Authorization: Bearer <accessToken>
 |---|---|---|---|---|
 | GET | /books | No | `page`, `limit` | Danh sách sách có phân trang |
 | GET | /books/search | No | `q`, `page`, `limit` | Tìm kiếm sách |
+| GET | /books/latest | No | none | Danh sách tối đa 10 cuốn mới phát hành (ưu tiên `release_date` mới nhất) |
+| GET | /books/category/:categoryId | No | none | Danh sách tối đa 10 cuốn theo danh mục |
+| GET | /books/best-sellers | No | none | Danh sách tối đa 10 cuốn bán chạy trong tháng hiện tại (UTC+7) |
 | GET | /books/:id | No | none | Chi tiết sách theo UUID |
+
+Ghi chú cho Books API mới:
+- `GET /books/latest`, `GET /books/category/:categoryId`, `GET /books/best-sellers` đều giới hạn cố định tối đa 10 cuốn.
+- `GET /books/category/:categoryId` trả `400` nếu `categoryId` sai UUID và trả `404` nếu category không tồn tại.
+- `GET /books/best-sellers` chỉ tính đơn hàng trạng thái `COMPLETED` trong tháng hiện tại theo UTC+7.
 
 ### 4.3 Categories
 
@@ -168,6 +176,22 @@ Ghi chú cho Address API:
 - Update cart item:
   - `quantity`: integer, >= 1
 
+### Books
+
+- `GET /books/:id`:
+  - `id`: UUID hợp lệ
+  - Sai định dạng UUID -> `400`
+- `GET /books/category/:categoryId`:
+  - `categoryId`: UUID hợp lệ
+  - Sai định dạng UUID -> `400`
+  - UUID hợp lệ nhưng category không tồn tại -> `404`
+- `GET /books/latest`, `GET /books/category/:categoryId`, `GET /books/best-sellers`:
+  - Không nhận query `limit`
+  - Trả tối đa 10 bản ghi
+- `GET /books/best-sellers`:
+  - Chỉ tính đơn `COMPLETED`
+  - Khoảng thời gian là tháng hiện tại theo UTC+7
+
 ### Order
 
 - `addressId`: UUID v4 (optional)
@@ -223,6 +247,24 @@ Content-Type: application/json
   "email": "user1@example.com",
   "password": "Ptest123"
 }
+```
+
+### Get latest books
+
+```http
+GET {{baseUrl}}/books/latest
+```
+
+### Get books by category
+
+```http
+GET {{baseUrl}}/books/category/9166b665-fb29-4383-a8ea-6c4efaaf44b1
+```
+
+### Get best-sellers books
+
+```http
+GET {{baseUrl}}/books/best-sellers
 ```
 
 ### Add to cart

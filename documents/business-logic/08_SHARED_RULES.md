@@ -20,6 +20,10 @@ Tài liệu này gom các quy tắc nghiệp vụ dùng chung cho nhiều featur
 - Mỗi user chỉ có tối đa một địa chỉ mặc định (`isDefault=true`), được bảo vệ bởi service rule và DB unique partial index.
 - Item trong cart chỉ được thao tác bởi đúng chủ sở hữu.
 - Admin không được tự khoá chính mình hoặc tự đổi role của chính mình.
+- Các API danh sách public dạng curated (latest, best-sellers, category-top) phải cố định top 10 để giữ ổn định hợp đồng với FE.
+- Các API có path param UUID phải validate định dạng ở controller trước khi vào service.
+- Các API aggregate theo thời gian phải ghi rõ múi giờ nghiệp vụ; với best-sellers của Books dùng mốc tháng hiện tại theo UTC+7.
+- API best-sellers của Books chỉ tính đơn hàng `COMPLETED` để tránh số liệu ảo từ đơn chưa hoàn tất.
 
 ## 4. Side effect hệ thống
 - Đăng ký, xác thực email và reset password có thể phát sinh email queue.
@@ -32,6 +36,9 @@ Tài liệu này gom các quy tắc nghiệp vụ dùng chung cho nhiều featur
 - Kiểm tra quyền truy cập trước khi kiểm tra logic nghiệp vụ sâu.
 - Các luồng write cần có test cho cả case thành công và case fail giữa transaction.
 - Các luồng có queue/Redis cần test cả trạng thái dữ liệu tạm và trạng thái DB cuối cùng.
+- Với endpoint có UUID path param, luôn có test cho case UUID sai định dạng (`400`) và case UUID hợp lệ nhưng không tồn tại (`404`) nếu nghiệp vụ yêu cầu.
+- Với endpoint top-N cố định, test phải xác nhận số lượng trả về `<= N` thay vì giả định luôn bằng N.
+- Với endpoint aggregate theo tháng, test cần xác nhận mốc thời gian đúng múi giờ nghiệp vụ đã chốt.
 
 ## 6. File liên quan
 - [src/middlewares/auth.middleware.ts](../../src/middlewares/auth.middleware.ts)
