@@ -34,7 +34,7 @@
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n  \"userName\": \"p test\",\r\n  \"email\": \"{{email}}\",\r\n  \"password\": \"Ptest123\"\r\n}",
+              "raw": "{\r\n  \"userName\": \"user phu1\",\r\n  \"email\": \"{{email}}\",\r\n  \"password\": \"Ptest123\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -60,7 +60,7 @@
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n  \"email\": \"{{email}}\",\r\n  \"code\": \"377639\"\r\n}",
+              "raw": "{\r\n  \"email\": \"{{email}}\",\r\n  \"code\": \"637406\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -425,7 +425,7 @@
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n  \"bookId\": \"{{bookId}}\",\r\n  \"quantity\": 5\r\n}",
+              "raw": "{\r\n  \"bookId\": \"{{bookId2}}\",\r\n  \"quantity\": 5\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -556,7 +556,7 @@
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n    \"addressId\": \"{{addressId}}\",\r\n    \"shippingFee\": 40000,\r\n    \"note\": \"giao tận tay nhé shipper ơi\"\r\n}",
+              "raw": "{\r\n    \"cartItemIds\": [\r\n        \"{{cartItemId}}\"\r\n    ],\r\n    \"addressId\": \"{{addressId}}\",\r\n    \"paymentMethod\": \"COD\",\r\n    \"shippingFee\": 30000,\r\n    \"note\": \"Giao giờ hành chính giúp em\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
