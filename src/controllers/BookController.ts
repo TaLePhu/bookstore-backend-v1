@@ -12,6 +12,11 @@ function getSafePagination(pageValue: unknown, limitValue: unknown): { page: num
   return { page, limit };
 }
 
+function isUuid(value: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(value);
+}
+
 @injectable()
 export class BookController {
   constructor(private bookService: BookService) {}
@@ -39,10 +44,8 @@ export class BookController {
   getBookById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id } = req.params;
-      
-      // Sử dụng Regex cơ bản thay vì thư viện 'uuid' vì Postgres cho phép các định dạng UUID linh hoạt hơn (không nhất thiết phải chuẩn RFC 4122)
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!uuidRegex.test(id)) {
+
+      if (!isUuid(id)) {
         res.status(400).json({
           success: false,
           message: 'Lỗi: ID không đúng định dạng UUID.'
@@ -77,6 +80,55 @@ export class BookController {
           page: result.page,
           limit: result.limit
         }
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getLatestBooks = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const books = await this.bookService.getLatestBooks();
+
+      res.status(200).json({
+        success: true,
+        data: books,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getBooksByCategoryId = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { categoryId } = req.params;
+
+      if (!isUuid(categoryId)) {
+        res.status(400).json({
+          success: false,
+          message: 'Lỗi: categoryId không đúng định dạng UUID.',
+        });
+        return;
+      }
+
+      const books = await this.bookService.getBooksByCategoryId(categoryId);
+
+      res.status(200).json({
+        success: true,
+        data: books,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getBestSellerBooks = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const books = await this.bookService.getBestSellerBooks();
+
+      res.status(200).json({
+        success: true,
+        data: books,
       });
     } catch (error) {
       next(error);
