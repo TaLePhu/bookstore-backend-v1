@@ -73,6 +73,9 @@ export class Book {
   @Column('simple-array', { nullable: true })
   highlights: string[];
 
+  @Column('date', { nullable: true })
+  releaseDate: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

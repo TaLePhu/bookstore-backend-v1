@@ -29,6 +29,8 @@ import { UpdateOrderFields1775921700962 } from '../migrations/1775921700962-Upda
 import { AddIsLockedToUsers1775999000000 } from '../migrations/1775999000000-AddIsLockedToUsers';
 import { UpdateAddressAndPaymentFields1776241539788 } from '@/migrations/1776241539788-UpdateAddressAndPaymentFields';
 import { AddAddressIsDefault1776500000000 } from '../migrations/1776500000000-AddAddressIsDefault';
+import { AddBookReleaseDate1776600000000 } from '../migrations/1776600000000-AddBookReleaseDate';
+import { BackfillBookReleaseDate1776600000001 } from '../migrations/1776600000001-BackfillBookReleaseDate';
 
 const env = getEnv();
 
@@ -68,6 +70,8 @@ export const AppDataSource = new DataSource({
     AddIsLockedToUsers1775999000000,
     UpdateAddressAndPaymentFields1776241539788,
     AddAddressIsDefault1776500000000,
+    AddBookReleaseDate1776600000000,
+    BackfillBookReleaseDate1776600000001,
   ],
   subscribers: [],
   cache: false,
