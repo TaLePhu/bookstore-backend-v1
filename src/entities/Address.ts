@@ -37,6 +37,9 @@ export class Address {
   @Column('varchar', { length: 100, nullable: true })
   wardName: string;
 
+  @Column('boolean', { name: 'is_default', default: false })
+  isDefault: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 
