@@ -118,6 +118,8 @@ export async function runSeed(options: SeedOptions = {}) {
     book.language = 'Tiếng Việt';
     book.originalPrice = Number(book.price) * 1.25; // 25% original price markup
     book.discount = 20; // 20% fake discount
+    // releaseDate tăng dần để API latest có dữ liệu rõ ràng
+    book.releaseDate = new Date(Date.UTC(2026, 2, i));
     book.highlights = [
       'Điểm nhấn 1 của sách',
       'Được độc giả đánh giá rất cao',
