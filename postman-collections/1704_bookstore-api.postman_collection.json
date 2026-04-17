@@ -2,6 +2,7 @@
   "info": {
     "_postman_id": "8984a432-4080-4dd9-b51e-0b8929fa87d8",
     "name": "BookStore API v1",
+    "description": "Version 1704: includes Address API and default-address rules.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_exporter_id": "51501151",
     "_collection_link": "https://go.postman.co/collection/51501151-8984a432-4080-4dd9-b51e-0b8929fa87d8?source=collection_link"
@@ -817,6 +818,131 @@
       ]
     },
     {
+      "name": "Address API",
+      "item": [
+        {
+          "name": "createAddress",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"receiverName\": \"Nguyen Van A\",\r\n  \"phone\": \"0901234567\",\r\n  \"addressLine\": \"123 Duong So 1\",\r\n  \"country\": \"VN\",\r\n  \"provinceCode\": \"79\",\r\n  \"provinceName\": \"Ho Chi Minh\",\r\n  \"districtCode\": \"760\",\r\n  \"districtName\": \"Quan 1\",\r\n  \"wardCode\": \"26734\",\r\n  \"wardName\": \"Ben Nghe\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}addresses",
+              "host": [
+                "{{baseUrl}}addresses"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "getMyAddresses",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}addresses",
+              "host": [
+                "{{baseUrl}}addresses"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "updateAddress_SetDefault",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"receiverName\": \"Nguyen Van A\",\r\n  \"phone\": \"0901234567\",\r\n  \"addressLine\": \"123 Duong So 1\",\r\n  \"country\": \"VN\",\r\n  \"provinceCode\": \"79\",\r\n  \"provinceName\": \"Ho Chi Minh\",\r\n  \"districtCode\": \"760\",\r\n  \"districtName\": \"Quan 1\",\r\n  \"wardCode\": \"26734\",\r\n  \"wardName\": \"Ben Nghe\",\r\n  \"isDefault\": true\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}addresses/{{addressId}}",
+              "host": [
+                "{{baseUrl}}addresses"
+              ],
+              "path": [
+                "{{addressId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "deleteAddress",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}addresses/{{addressId}}",
+              "host": [
+                "{{baseUrl}}addresses"
+              ],
+              "path": [
+                "{{addressId}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Health Check",
       "request": {
         "method": "GET",
@@ -849,6 +975,11 @@
     },
     {
       "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "addressId",
       "value": "",
       "type": "string"
     }

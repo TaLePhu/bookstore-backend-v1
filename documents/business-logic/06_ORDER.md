@@ -11,7 +11,7 @@ Feature Order xử lý bước checkout từ giỏ hàng sang đơn hàng và tr
 
 ### 3.1 Tạo đơn hàng từ giỏ
 1. Người dùng gửi yêu cầu checkout với các nhóm dữ liệu sau:
-	- `addressId` (nếu dùng địa chỉ đã lưu)(Note-1604: table address chưa có field is_default, một user có nhiều address nên khi checkout phải biết address nào là default để load/set cho data address), hoặc
+	- `addressId` (nếu dùng địa chỉ đã lưu), hoặc
 	- Inline address gồm tối thiểu `addressLine`, `phone`, `receiverName` (và có thể kèm `country`, `provinceCode`, `provinceName`, `districtCode`, `districtName`, `wardCode`, `wardName`).
 	- `cartItemIds` (optional) để chỉ checkout một phần giỏ hàng.
 	- `paymentMethod` (optional), mặc định `COD`.
@@ -30,10 +30,10 @@ Feature Order xử lý bước checkout từ giỏ hàng sang đơn hàng và tr
 11. Hệ thống tạo OrderItem, trừ stock của từng book và chỉ xoá các CartItem đã được checkout.
 12. Sau cùng hệ thống reload đơn hàng và trả kết quả mới nhất cho client.
 
-- Note:
-1. case 1: nhập đầy đủ thông tin
-2. case 2: dùng addressId, và chọn Item không có trong cart => báo lỗi với message cụ thể
-3. case 3: dùng addressId, chọn Item có trong giỏ => thành công.
+Ghi chú:
+- Nếu FE có danh sách địa chỉ đã lưu, có thể preselect địa chỉ mặc định.
+- Backend không auto chọn địa chỉ theo default ở bước checkout; request vẫn phải truyền `addressId` hoặc inline address hợp lệ.
+
 ### 3.2 Lấy danh sách đơn hàng của tôi
 1. User gọi endpoint danh sách đơn hàng của mình.
 2. Hệ thống trả về dữ liệu có phân trang.

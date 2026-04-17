@@ -10,6 +10,7 @@ Bộ tài liệu này mô tả logic nghiệp vụ của từng feature trong h�
 ## Phạm vi tài liệu
 - Auth
 - User
+- Address (shipping address management)
 - Book và Search
 - Category
 - Cart
@@ -40,3 +41,4 @@ Mỗi feature doc nên có các phần sau:
 - Tài liệu này ưu tiên mô tả business logic, không lặp lại toàn bộ API contract.
 - Luồng có thay đổi trạng thái phải ghi rõ điều kiện đầu vào, dữ liệu bị cập nhật và dữ liệu bị huỷ/khóa.
 - Các luồng liên quan tới email, token, queue, Redis, transaction hoặc stock cần được nhấn mạnh vì đây là các điểm dễ phát sinh lỗi nhất.
+- Tech note liên quan Address API: `docs/tech_note/1704_Address_API_Default_Rules.md`.

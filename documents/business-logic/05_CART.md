@@ -39,6 +39,7 @@ Feature Cart quản lý giỏ hàng hiện tại của user, gồm xem giỏ, th
 1. Ở bước tạo order, user có thể truyền `cartItemIds` để chọn một phần item trong giỏ.
 2. Chỉ những item được chọn mới bị xoá khỏi cart sau khi checkout thành công.
 3. Các item còn lại tiếp tục nằm trong cart active để user checkout ở lần sau.
+4. Khi checkout bằng `addressId`, địa chỉ này được lấy từ danh sách địa chỉ giao hàng đã lưu của user.
 
 ## 4. Ràng buộc nghiệp vụ
 - Không được thêm hoặc cập nhật vượt quá stock hiện tại của sách.

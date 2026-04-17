@@ -17,6 +17,7 @@ Tài liệu này gom các quy tắc nghiệp vụ dùng chung cho nhiều featur
 - Order phải resolve địa chỉ theo đúng rule: dùng `addressId` của chính user hoặc tạo mới từ inline address hợp lệ.
 - Hỗ trợ partial checkout: chỉ cart items được chọn mới bị checkout và bị xoá khỏi cart.
 - Address cần được chuẩn hoá theo cấu trúc địa giới hành chính (`country`, `provinceCode`, `districtCode`, `wardCode` và các trường name tương ứng).
+- Mỗi user chỉ có tối đa một địa chỉ mặc định (`isDefault=true`), được bảo vệ bởi service rule và DB unique partial index.
 - Item trong cart chỉ được thao tác bởi đúng chủ sở hữu.
 - Admin không được tự khoá chính mình hoặc tự đổi role của chính mình.
 
@@ -25,6 +26,7 @@ Tài liệu này gom các quy tắc nghiệp vụ dùng chung cho nhiều featur
 - Đổi mật khẩu hoặc logout làm vô hiệu phiên đăng nhập cũ thông qua refresh token.
 - Checkout đơn hàng làm thay đổi đồng thời nhiều bảng nên phải được xem là luồng nhạy cảm nhất.
 - Checkout có thể tạo thêm Address mới (khi dùng inline address) và luôn tạo Payment record đi kèm Order.
+- Đổi địa chỉ mặc định là luồng ghi dữ liệu có transaction để tránh phát sinh hai default address cùng lúc.
 
 ## 5. Quy tắc test chung
 - Kiểm tra quyền truy cập trước khi kiểm tra logic nghiệp vụ sâu.

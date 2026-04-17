@@ -30,6 +30,14 @@ Feature User quản lý hồ sơ cá nhân, thông tin mở rộng và đổi m�
 5. Sau khi đổi mật khẩu, hệ thống thu hồi toàn bộ refresh token hiện có của user.
 6. Hệ thống sinh cặp token mới để người dùng tiếp tục đăng nhập.
 
+### 3.4 Quản lý địa chỉ giao hàng
+1. Người dùng có thể tạo địa chỉ giao hàng mới qua Address API.
+2. Nếu là địa chỉ đầu tiên của user, hệ thống tự set làm địa chỉ mặc định.
+3. Người dùng có thể cập nhật địa chỉ và chuyển địa chỉ mặc định bằng `isDefault=true`.
+4. Hệ thống đảm bảo mỗi user chỉ có tối đa một địa chỉ mặc định tại một thời điểm.
+5. Người dùng không được xóa địa chỉ mặc định.
+6. Người dùng không được xóa địa chỉ nếu chỉ còn một địa chỉ duy nhất.
+
 ## 4. Ràng buộc nghiệp vụ
 - User chỉ được xem và sửa chính hồ sơ của mình.
 - userAdvance là phần mở rộng, có thể chưa tồn tại ở thời điểm user mới tạo.
@@ -37,6 +45,7 @@ Feature User quản lý hồ sơ cá nhân, thông tin mở rộng và đổi m�
 - Các trường profile cập nhật theo kiểu overwrite, không phải merge phức tạp theo lịch sử.
 - Trường địa chỉ giao hàng không còn nằm trong profile update; địa chỉ được quản lý riêng trong bảng `addresses`.
 - Một user có thể có nhiều địa chỉ và order sẽ resolve theo `addressId` hoặc inline address tại thời điểm checkout.
+- Rule mặc định: mỗi user chỉ có một `isDefault=true`.
 
 ## 5. Side effect và trạng thái
 - Cập nhật profile có thể tạo mới userAdvance nếu trước đó chưa có.
@@ -56,3 +65,8 @@ Feature User quản lý hồ sơ cá nhân, thông tin mở rộng và đổi m�
 - [src/dtos/user/ChangePasswordDto.ts](../../src/dtos/user/ChangePasswordDto.ts)
 - [src/entities/UserAdvance.ts](../../src/entities/UserAdvance.ts)
 - [src/entities/Address.ts](../../src/entities/Address.ts)
+- [src/services/AddressService.ts](../../src/services/AddressService.ts)
+- [src/controllers/AddressController.ts](../../src/controllers/AddressController.ts)
+- [src/routes/address.routes.ts](../../src/routes/address.routes.ts)
+- [src/dtos/address/CreateAddressDto.ts](../../src/dtos/address/CreateAddressDto.ts)
+- [src/dtos/address/UpdateAddressDto.ts](../../src/dtos/address/UpdateAddressDto.ts)

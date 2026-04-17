@@ -133,6 +133,22 @@ Ghi chú cho `POST /orders`:
 | POST | /admin/users/:id/reset-password | Yes (ADMIN) | Body: `newPassword` | Đặt lại mật khẩu user |
 | GET | /admin/customers/:id/summary | Yes (ADMIN) | none | Tổng quan khách hàng |
 
+### 4.8 Addresses (protected)
+
+| Method | Path | Auth | Body/Query | Mô tả |
+|---|---|---|---|---|
+| POST | /addresses | Yes | Body: `receiverName`, `phone`, `addressLine`, `country`, `provinceCode`, `provinceName`, `districtCode`, `districtName`, `wardCode`, `wardName`, `isDefault?` | Tạo địa chỉ giao hàng mới |
+| GET | /addresses | Yes | none | Danh sách địa chỉ giao hàng của user |
+| GET | /addresses/:id | Yes | none | Chi tiết địa chỉ giao hàng |
+| PATCH | /addresses/:id | Yes | Body: đầy đủ field địa chỉ + `isDefault?` | Cập nhật địa chỉ giao hàng |
+| DELETE | /addresses/:id | Yes | none | Xóa địa chỉ giao hàng |
+
+Ghi chú cho Address API:
+- Địa chỉ đầu tiên của user sẽ tự động là mặc định.
+- Mỗi user chỉ có tối đa 1 địa chỉ mặc định tại một thời điểm.
+- Không được xóa địa chỉ mặc định.
+- Không được xóa khi user chỉ còn 1 địa chỉ.
+
 ## 5) Validation rules chính
 
 ### Auth
@@ -170,6 +186,24 @@ Ghi chú cho `POST /orders`:
   - `dob`: valid date string (optional)
 - Change password:
   - `newPassword`: min 6, max 255
+
+### Address
+
+- Create/Update:
+  - `receiverName`: string, min 2, max 255
+  - `phone`: string, max 20
+  - `addressLine`: string, max 500
+  - `country`: string, max 100
+  - `provinceCode`: string, max 50
+  - `provinceName`: string, max 100
+  - `districtCode`: string, max 50
+  - `districtName`: string, max 100
+  - `wardCode`: string, max 50
+  - `wardName`: string, max 100
+  - `isDefault` (optional): boolean
+- Rule nghiệp vụ:
+  - Xóa địa chỉ mặc định -> `400`.
+  - Xóa khi chỉ còn một địa chỉ -> `400`.
 
 ### Admin
 
@@ -229,6 +263,49 @@ Content-Type: application/json
 }
 ```
 
+### Create address
+
+```http
+POST {{baseUrl}}/addresses
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{
+  "receiverName": "Nguyen Van A",
+  "phone": "0901234567",
+  "addressLine": "123 Duong So 1",
+  "country": "VN",
+  "provinceCode": "79",
+  "provinceName": "Ho Chi Minh",
+  "districtCode": "760",
+  "districtName": "Quan 1",
+  "wardCode": "26734",
+  "wardName": "Ben Nghe"
+}
+```
+
+### Set default address
+
+```http
+PATCH {{baseUrl}}/addresses/{{addressId}}
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{
+  "receiverName": "Nguyen Van A",
+  "phone": "0901234567",
+  "addressLine": "123 Duong So 1",
+  "country": "VN",
+  "provinceCode": "79",
+  "provinceName": "Ho Chi Minh",
+  "districtCode": "760",
+  "districtName": "Quan 1",
+  "wardCode": "26734",
+  "wardName": "Ben Nghe",
+  "isDefault": true
+}
+```
+
 ## 7) Hướng dẫn cho frontend
 
 - Luôn xử lý `401` để chuyển qua flow refresh token.
@@ -238,7 +315,7 @@ Content-Type: application/json
 
 ## 8) Tài liệu liên quan
 
-- Postman collection: `postman-collections/1404_BookStoreAPI.postman_collection.json`
+- Postman collection: `postman-collections/1704_bookstore-api.postman_collection.json`
 - README index: `README.md`
 - Route source:
   - `src/routes/auth.routes.ts`
@@ -248,6 +325,7 @@ Content-Type: application/json
   - `src/routes/order.routes.ts`
   - `src/routes/user.routes.ts`
   - `src/routes/admin.routes.ts`
+  - `src/routes/address.routes.ts`
 
 ## 9) Lưu ý cập nhật
 
