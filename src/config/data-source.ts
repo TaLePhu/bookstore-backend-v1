@@ -31,6 +31,7 @@ import { UpdateAddressAndPaymentFields1776241539788 } from '@/migrations/1776241
 import { AddAddressIsDefault1776500000000 } from '../migrations/1776500000000-AddAddressIsDefault';
 import { AddBookReleaseDate1776600000000 } from '../migrations/1776600000000-AddBookReleaseDate';
 import { BackfillBookReleaseDate1776600000001 } from '../migrations/1776600000001-BackfillBookReleaseDate';
+import { AddRefreshTokenDeviceId1777000000000 } from '@/migrations/1777000000000-AddRefreshTokenDeviceId';
 
 const env = getEnv();
 
@@ -72,6 +73,7 @@ export const AppDataSource = new DataSource({
     AddAddressIsDefault1776500000000,
     AddBookReleaseDate1776600000000,
     BackfillBookReleaseDate1776600000001,
+    AddRefreshTokenDeviceId1777000000000,
   ],
   subscribers: [],
   cache: false,

@@ -1,5 +1,6 @@
 import { injectable, inject } from 'tsyringe';
 import { randomInt } from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
 import { RegisterDto } from '@dtos/auth/RegisterDto';
 import { LoginDto } from '@dtos/auth/LoginDto';
 import { VerifyEmailDto } from '@dtos/auth/VerifyEmailDto';
@@ -7,9 +8,9 @@ import { IUserRepository } from '@repositories/interfaces/IUserRepository';
 import { IRefreshTokenRepository } from '@repositories/interfaces/IRefreshTokenRepository';
 import { TOKENS } from '@config/container';
 import { HashHelper } from '@utils/hash';
-import { TokenHelper } from '@utils/jwt';
+import { TokenHelper, TokenPayload } from '@utils/jwt';
 import { ConflictError, UnauthorizedError, ForbiddenError, NotFoundError } from '@utils/errors';
-import { Role, User } from '@entities/User';
+import { Role } from '@entities/User';
 import { RefreshToken } from '@entities/RefreshToken';
 import redisConfig from '@config/redis';
 import { emailQueue } from '@config/queue';
@@ -21,6 +22,7 @@ export interface AuthResponse {
   role: Role;
   accessToken: string;
   refreshToken: string;
+  deviceId: string;
 }
 
 @injectable()
@@ -112,21 +114,16 @@ export class AuthService {
     await redisConfig.del(`verify_code:${email}`);
     await redisConfig.del(attemptsKey);
     
-    // Generate tokens
-    const accessToken = TokenHelper.generateAccessToken({
+    const deviceId = uuidv4();
+
+    const { accessToken, refreshTokenValue, refreshPayload } = this.generateTokenPair({
       userId: user.id,
+      deviceId,
       email: user.email,
       role: user.role,
     });
 
-    const refreshTokenValue = TokenHelper.generateRefreshToken({
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-    });
-
-    // Store refresh token in database
-    await this.createRefreshTokenRecord(user.id, refreshTokenValue);
+    await this.storeSession(user.id, deviceId, refreshTokenValue, refreshPayload);
 
     return {
       id: user.id,
@@ -135,6 +132,7 @@ export class AuthService {
       role: user.role,
       accessToken,
       refreshToken: refreshTokenValue,
+      deviceId,
     };
   }
 
@@ -159,21 +157,16 @@ export class AuthService {
       throw new UnauthorizedError('Invalid email or password');
     }
 
-    // Generate tokens
-    const accessToken = TokenHelper.generateAccessToken({
+    const deviceId = uuidv4();
+
+    const { accessToken, refreshTokenValue, refreshPayload } = this.generateTokenPair({
       userId: user.id,
+      deviceId,
       email: user.email,
       role: user.role,
     });
 
-    const refreshTokenValue = TokenHelper.generateRefreshToken({
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-    });
-
-    // Store refresh token in database
-    await this.createRefreshTokenRecord(user.id, refreshTokenValue);
+    await this.storeSession(user.id, deviceId, refreshTokenValue, refreshPayload);
 
     return {
       id: user.id,
@@ -182,53 +175,65 @@ export class AuthService {
       role: user.role,
       accessToken,
       refreshToken: refreshTokenValue,
+      deviceId,
     };
   }
 
-  async refreshToken(token: string): Promise<AuthResponse> {
-    // Find refresh token in database
-    const refreshTokenRecord = await this.refreshTokenRepository.findByToken(token);
-    if (!refreshTokenRecord || refreshTokenRecord.isRevoked) {
-      throw new UnauthorizedError('Invalid or revoked refresh token');
+  async refreshToken(token: string, deviceId: string): Promise<AuthResponse> {
+    if (!deviceId) {
+      throw new UnauthorizedError('Missing deviceId');
     }
 
-    // Verify token is not expired
-    if (new Date() > refreshTokenRecord.expiresAt) {
-      await this.refreshTokenRepository.revoke(refreshTokenRecord.id);
-      throw new UnauthorizedError('Refresh token expired');
-    }
-
-    // Verify JWT signature
+    let refreshPayload: TokenPayload;
     try {
-      TokenHelper.verifyRefreshToken(token);
+      refreshPayload = TokenHelper.verifyRefreshToken(token);
     } catch {
       throw new UnauthorizedError('Invalid refresh token');
     }
 
-    const user = refreshTokenRecord.user;
+    if (refreshPayload.deviceId !== deviceId) {
+      throw new UnauthorizedError('Invalid refresh token');
+    }
+
+    const refreshTokenHash = HashHelper.sha256(token);
+    const sessionKey = this.buildSessionKey(refreshPayload.userId, deviceId);
+    const redisSession = await this.getSessionFromRedis(sessionKey);
+
+    if (redisSession && redisSession.refreshTokenHash !== refreshTokenHash) {
+      throw new UnauthorizedError('Invalid refresh token');
+    }
+
+    let refreshTokenRecord: RefreshToken | null = null;
+    if (!redisSession) {
+      refreshTokenRecord = await this.refreshTokenRepository.findActiveByTokenHashAndDeviceId(refreshTokenHash, deviceId);
+      if (!refreshTokenRecord) {
+        throw new UnauthorizedError('Invalid refresh token');
+      }
+    }
+
+    const user = await this.userRepository.findById(refreshPayload.userId);
+    if (!user) {
+      throw new UnauthorizedError('Invalid refresh token');
+    }
 
     if (user.isLocked) {
       throw new ForbiddenError('Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Admin.');
     }
 
-    // Generate new token pair
-    const accessToken = TokenHelper.generateAccessToken({
+    if (refreshTokenRecord) {
+      await this.refreshTokenRepository.revoke(refreshTokenRecord.id);
+    } else {
+      await this.refreshTokenRepository.revokeByUserIdAndDeviceId(refreshPayload.userId, deviceId);
+    }
+
+    const { accessToken, refreshTokenValue, refreshPayload: newRefreshPayload } = this.generateTokenPair({
       userId: user.id,
+      deviceId,
       email: user.email,
       role: user.role,
     });
 
-    const newRefreshTokenValue = TokenHelper.generateRefreshToken({
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-    });
-
-    // Revoke old refresh token
-    await this.refreshTokenRepository.revoke(refreshTokenRecord.id);
-
-    // Store new refresh token
-    await this.createRefreshTokenRecord(user.id, newRefreshTokenValue);
+    await this.storeSession(user.id, deviceId, refreshTokenValue, newRefreshPayload);
 
     return {
       id: user.id,
@@ -236,25 +241,62 @@ export class AuthService {
       email: user.email,
       role: user.role,
       accessToken,
-      refreshToken: newRefreshTokenValue,
+      refreshToken: refreshTokenValue,
+      deviceId,
     };
   }
 
-  async logout(userId: string): Promise<void> {
-    // Revoke all active refresh tokens for user
-    await this.refreshTokenRepository.revokeAllByUserId(userId);
+  async logout(userId: string, deviceId: string): Promise<void> {
+    const sessionKey = this.buildSessionKey(userId, deviceId);
+    await redisConfig.del(sessionKey);
+    await this.refreshTokenRepository.revokeByUserIdAndDeviceId(userId, deviceId);
   }
 
-  private async createRefreshTokenRecord(userId: string, token: string): Promise<RefreshToken> {
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
+  private generateTokenPair(payload: Omit<TokenPayload, 'iat' | 'exp'>): { accessToken: string; refreshTokenValue: string; refreshPayload: TokenPayload } {
+    const accessToken = TokenHelper.generateAccessToken(payload);
+    const refreshTokenValue = TokenHelper.generateRefreshToken(payload);
+    const refreshPayload = TokenHelper.verifyRefreshToken(refreshTokenValue);
+    return { accessToken, refreshTokenValue, refreshPayload };
+  }
 
-    return this.refreshTokenRepository.create({
+  private buildSessionKey(userId: string, deviceId: string): string {
+    return `auth:${userId}:${deviceId}`;
+  }
+
+  private async storeSession(userId: string, deviceId: string, refreshToken: string, refreshPayload: TokenPayload): Promise<void> {
+    if (!refreshPayload.exp) {
+      throw new UnauthorizedError('Invalid refresh token');
+    }
+
+    const refreshTokenHash = HashHelper.sha256(refreshToken);
+    const expiresAt = new Date(refreshPayload.exp * 1000);
+    const ttlSeconds = Math.max(1, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
+    const sessionKey = this.buildSessionKey(userId, deviceId);
+    const value = JSON.stringify({
+      refreshTokenHash,
+      expiresAt: expiresAt.toISOString(),
+    });
+
+    await redisConfig.set(sessionKey, value, 'EX', ttlSeconds);
+    await this.refreshTokenRepository.create({
       userId,
-      token,
+      deviceId,
+      token: refreshTokenHash,
       expiresAt,
       isRevoked: false,
     } as any);
+  }
+
+  private async getSessionFromRedis(sessionKey: string): Promise<{ refreshTokenHash: string; expiresAt: string } | null> {
+    try {
+      const raw = await redisConfig.get(sessionKey);
+      if (!raw) {
+        return null;
+      }
+      return JSON.parse(raw) as { refreshTokenHash: string; expiresAt: string };
+    } catch {
+      return null;
+    }
   }
 
   private async sendVerificationCode(email: string): Promise<void> {

@@ -9,7 +9,7 @@ import { Role } from '@entities/User';
 import { UserAdvance } from '@entities/UserAdvance';
 import { HashHelper } from '@utils/hash';
 import { TokenHelper } from '@utils/jwt';
-import { RefreshToken } from '@entities/RefreshToken';
+import redisConfig from '@config/redis';
 
 export interface UserProfileResponse {
   id: string;
@@ -76,7 +76,7 @@ export class UserService {
     return this.mapToProfileResponse(finalUser!);
   }
 
-  async changePassword(userId: string, data: ChangePasswordDto) {
+  async changePassword(userId: string, deviceId: string, data: ChangePasswordDto) {
     const user = await this.userRepository.findById(userId);
     if (!user) {
       throw new NotFoundError('User not found');
@@ -94,26 +94,44 @@ export class UserService {
 
     // Invalidate all tokens
     await this.refreshTokenRepository.revokeAllByUserId(userId);
+    await this.deleteUserSessions(userId);
 
     // Generate new token pair
     const accessToken = TokenHelper.generateAccessToken({
       userId: user.id,
+      deviceId,
       email: user.email,
       role: user.role,
     });
 
     const refreshTokenValue = TokenHelper.generateRefreshToken({
       userId: user.id,
+      deviceId,
       email: user.email,
       role: user.role,
     });
 
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7);
+    const refreshPayload = TokenHelper.verifyRefreshToken(refreshTokenValue);
+    if (!refreshPayload.exp) {
+      throw new UnauthorizedError('Invalid refresh token');
+    }
+
+    const refreshTokenHash = HashHelper.sha256(refreshTokenValue);
+    const expiresAt = new Date(refreshPayload.exp * 1000);
+    const ttlSeconds = Math.max(1, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
+    const sessionKey = `auth:${user.id}:${deviceId}`;
+
+    await redisConfig.set(
+      sessionKey,
+      JSON.stringify({ refreshTokenHash, expiresAt: expiresAt.toISOString() }),
+      'EX',
+      ttlSeconds
+    );
 
     await this.refreshTokenRepository.create({
       userId: user.id,
-      token: refreshTokenValue,
+      deviceId,
+      token: refreshTokenHash,
       expiresAt,
       isRevoked: false,
     } as any);
@@ -139,5 +157,16 @@ export class UserService {
       phone: user.userAdvance?.phone,
       createdAt: user.createdAt,
     };
+  }
+
+  private async deleteUserSessions(userId: string): Promise<void> {
+    let cursor = '0';
+    do {
+      const [nextCursor, keys] = await redisConfig.scan(cursor, 'MATCH', `auth:${userId}:*`, 'COUNT', 100);
+      cursor = nextCursor;
+      if (keys.length > 0) {
+        await redisConfig.del(...keys);
+      }
+    } while (cursor !== '0');
   }
 }

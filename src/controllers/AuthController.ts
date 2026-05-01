@@ -38,17 +38,21 @@ export class AuthController {
   });
 
   refreshToken = asyncWrapper(async (req: Request, res: Response) => {
-    const { refreshToken }: RefreshTokenDto = req.body;
-    const result = await this.authService.refreshToken(refreshToken);
+    const { refreshToken, deviceId }: RefreshTokenDto = req.body;
+    const result = await this.authService.refreshToken(refreshToken, deviceId);
     return sendSuccess(res, result, 'Token refreshed successfully');
   });
 
   logout = asyncWrapper(async (req: Request, res: Response) => {
     const userId = (req as any).user?.userId;
+    const deviceId = (req as any).user?.deviceId;
     if (!userId) {
       return sendError(res, 'Unauthorized', 401);
     }
-    await this.authService.logout(userId);
+    if (!deviceId) {
+      return sendError(res, 'Unauthorized', 401);
+    }
+    await this.authService.logout(userId, deviceId);
     return sendSuccess(res, {}, 'Logged out successfully');
   });
 }

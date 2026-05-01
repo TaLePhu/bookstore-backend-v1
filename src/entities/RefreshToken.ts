@@ -12,13 +12,16 @@ import { v4 as uuidv4 } from 'uuid';
 import { User } from './User';
 
 @Entity('refresh_tokens')
-@Index(['userId', 'createdAt'])
+@Index(['userId', 'deviceId', 'createdAt'])
 export class RefreshToken {
   @PrimaryColumn('uuid')
   id: string = uuidv4();
 
   @Column('text')
   token: string;
+
+  @Column('uuid', { name: 'device_id', nullable: true })
+  deviceId: string | null;
 
   @Column('timestamp')
   expiresAt: Date;
@@ -37,6 +40,6 @@ export class RefreshToken {
   @JoinColumn({ name: 'user_id' })
   user: User;
 
-  @Column('uuid')
+  @Column('uuid', { name: 'user_id' })
   userId: string;
 }

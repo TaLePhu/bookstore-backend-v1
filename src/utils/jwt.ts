@@ -3,6 +3,7 @@ import { getEnv } from '@config/env';
 
 export interface TokenPayload {
   userId: string;
+  deviceId: string;
   email: string;
   role: string;
   iat?: number;

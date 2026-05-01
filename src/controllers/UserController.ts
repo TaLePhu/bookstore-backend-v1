@@ -31,11 +31,15 @@ export class UserController {
 
   changePassword = asyncWrapper(async (req: Request, res: Response) => {
     const userId = (req as any).user?.userId;
+    const deviceId = (req as any).user?.deviceId;
     if (!userId) {
       return sendError(res, 'Unauthorized', 401);
     }
+    if (!deviceId) {
+      return sendError(res, 'Unauthorized', 401);
+    }
     const changePasswordDto: ChangePasswordDto = req.body;
-    const result = await this.userService.changePassword(userId, changePasswordDto);
-    return sendSuccess(res, { accessToken: result.accessToken, refreshToken: result.refreshToken }, result.message);
+    const result = await this.userService.changePassword(userId, deviceId, changePasswordDto);
+    return sendSuccess(res, { accessToken: result.accessToken, refreshToken: result.refreshToken, deviceId }, result.message);
   });
 }

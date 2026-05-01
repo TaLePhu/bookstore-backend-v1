@@ -1,4 +1,5 @@
 import bcryptjs from 'bcryptjs';
+import { createHash } from 'crypto';
 import { getEnv } from '@config/env';
 
 export class HashHelper {
@@ -10,5 +11,9 @@ export class HashHelper {
 
   static async compare(data: string, hash: string): Promise<boolean> {
     return bcryptjs.compare(data, hash);
+  }
+
+  static sha256(data: string): string {
+    return createHash('sha256').update(data).digest('hex');
   }
 }

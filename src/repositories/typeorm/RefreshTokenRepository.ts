@@ -1,4 +1,4 @@
-import { Repository, LessThan } from 'typeorm';
+import { Repository, LessThan, MoreThan } from 'typeorm';
 import { RefreshToken } from '@entities/RefreshToken';
 import { AppDataSource } from '@config/data-source';
 import { IRefreshTokenRepository } from '@repositories/interfaces/IRefreshTokenRepository';
@@ -21,9 +21,9 @@ export class RefreshTokenRepository implements IRefreshTokenRepository {
     });
   }
 
-  async findByToken(token: string): Promise<RefreshToken | null> {
+  async findByTokenHash(tokenHash: string): Promise<RefreshToken | null> {
     return this.repository.findOne({
-      where: { token },
+      where: { token: tokenHash },
       relations: ['user'],
     });
   }
@@ -37,6 +37,33 @@ export class RefreshTokenRepository implements IRefreshTokenRepository {
         expiresAt: MoreThan(now),
       },
       order: { createdAt: 'DESC' },
+    });
+  }
+
+  async findActiveByUserIdAndDeviceId(userId: string, deviceId: string): Promise<RefreshToken | null> {
+    const now = new Date();
+    return this.repository.findOne({
+      where: {
+        userId,
+        deviceId,
+        isRevoked: false,
+        expiresAt: MoreThan(now),
+      },
+      order: { createdAt: 'DESC' },
+      relations: ['user'],
+    });
+  }
+
+  async findActiveByTokenHashAndDeviceId(tokenHash: string, deviceId: string): Promise<RefreshToken | null> {
+    const now = new Date();
+    return this.repository.findOne({
+      where: {
+        token: tokenHash,
+        deviceId,
+        isRevoked: false,
+        expiresAt: MoreThan(now),
+      },
+      relations: ['user'],
     });
   }
 
@@ -56,6 +83,14 @@ export class RefreshTokenRepository implements IRefreshTokenRepository {
     return (result.affected ?? 0) > 0;
   }
 
+  async revokeByUserIdAndDeviceId(userId: string, deviceId: string): Promise<boolean> {
+    const result = await this.repository.update(
+      { userId, deviceId, isRevoked: false },
+      { isRevoked: true }
+    );
+    return (result.affected ?? 0) > 0;
+  }
+
   async deleteExpired(): Promise<number> {
     const now = new Date();
     const result = await this.repository.delete({
@@ -64,5 +99,3 @@ export class RefreshTokenRepository implements IRefreshTokenRepository {
     return result.affected ?? 0;
   }
 }
-
-import { MoreThan } from 'typeorm';
