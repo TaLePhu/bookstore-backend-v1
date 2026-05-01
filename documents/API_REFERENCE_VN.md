@@ -76,7 +76,7 @@ Authorization: Bearer <accessToken>
 | POST | /auth/verify-email | No | `email`, `code` | Xác thực email bằng mã 6 ký tự |
 | POST | /auth/resend-code | No | `email` | Gửi lại mã xác thực |
 | POST | /auth/login | No | `email`, `password` | Đăng nhập, trả về token |
-| POST | /auth/refresh-token | No | `refreshToken` | Cấp access token mới |
+| POST | /auth/refresh-token | No | `refreshToken`, `deviceId` | Cấp access token mới (rotate refresh token) |
 | POST | /auth/logout | Yes | none | Đăng xuất người dùng hiện tại |
 
 ### 4.2 Books
@@ -167,6 +167,8 @@ Ghi chú cho Address API:
   - `password`: min 8, max 255, phải có chữ thường + chữ hoa + số
 - Verify email:
   - `code`: đúng 6 ký tự
+- Refresh token:
+  - `deviceId`: UUID hợp lệ
 
 ### Cart
 
@@ -241,6 +243,18 @@ Content-Type: application/json
 {
   "email": "user1@example.com",
   "password": "Ptest123"
+}
+```
+
+### Refresh token
+
+```http
+POST {{baseUrl}}/auth/refresh-token
+Content-Type: application/json
+
+{
+  "refreshToken": "<refreshToken>",
+  "deviceId": "<uuid>"
 }
 ```
 

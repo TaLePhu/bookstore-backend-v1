@@ -1,12 +1,12 @@
 # Auth - Logic Nghiệp Vụ
 
 ## 1. Mục tiêu
-Feature Auth quản lý vòng đời xác thực tài khoản: đăng ký, gửi mã xác thực email, xác minh email, đăng nhập, làm mới token và đăng xuất.
+Feature Auth quản lý vòng đời xác thực tài khoản: đăng ký, gửi mã xác thực email, xác minh email, đăng nhập, làm mới token và đăng xuất, có hỗ trợ multi-device và Redis whitelist.
 
 ## 2. Actor và quyền truy cập
 - Khách chưa đăng nhập: có thể đăng ký, xác minh email, gửi lại mã xác thực, đăng nhập và làm mới token.
 - Người dùng đã đăng nhập: có thể đăng xuất.
-- Hệ thống nội bộ: gửi email xác thực qua queue và lưu refresh token vào database.
+- Hệ thống nội bộ: gửi email xác thực qua queue, lưu refresh token hash vào Redis + database.
 
 ## 3. Luồng nghiệp vụ chính
 
@@ -29,27 +29,28 @@ Feature Auth quản lý vòng đời xác thực tài khoản: đăng ký, gửi
 3. Nếu mã không tồn tại hoặc đã hết hạn thì từ chối.
 4. Nếu mã sai thì tăng bộ đếm số lần nhập sai trong Redis.
 5. Khi đạt quá số lần sai cho phép, hệ thống xoá mã và bộ đếm để buộc người dùng xin mã mới.
-6. Nếu mã đúng, hệ thống đánh dấu user là đã xác thực, xoá mã trong Redis, sinh access token và refresh token mới, đồng thời lưu refresh token vào DB.
+6. Nếu mã đúng, hệ thống đánh dấu user là đã xác thực, xoá mã trong Redis, sinh access token + refresh token mới kèm deviceId (server tự sinh), lưu refresh token hash vào Redis + DB.
 
 ### 3.4 Đăng nhập
 1. Người dùng nhập email và password.
 2. Hệ thống kiểm tra user có tồn tại không.
 3. Chỉ cho đăng nhập nếu tài khoản đã xác thực email.
 4. Nếu tài khoản bị khoá thì từ chối đăng nhập.
-5. Nếu mật khẩu hợp lệ thì sinh cặp access token và refresh token, sau đó lưu refresh token vào DB.
+5. Nếu mật khẩu hợp lệ thì sinh cặp access token và refresh token kèm deviceId (server tự sinh), lưu refresh token hash vào Redis + DB.
 
 ### 3.5 Làm mới token
-1. Client gửi refresh token hợp lệ.
-2. Hệ thống kiểm tra refresh token có tồn tại trong DB và chưa bị thu hồi.
-3. Nếu token hết hạn thì thu hồi bản ghi tương ứng và từ chối.
-4. Nếu chữ ký JWT không hợp lệ thì từ chối.
+1. Client gửi refresh token và deviceId.
+2. Hệ thống verify JWT refresh token, đối chiếu deviceId trong payload.
+3. Hệ thống kiểm tra refresh token hash trong Redis; nếu Redis miss thì fallback kiểm tra DB.
+4. Nếu token hết hạn hoặc không hợp lệ thì từ chối.
 5. Nếu tài khoản bị khoá thì từ chối.
-6. Nếu hợp lệ, hệ thống tạo cặp token mới, thu hồi refresh token cũ và lưu refresh token mới.
+6. Nếu hợp lệ, hệ thống bắt buộc rotate: tạo access token mới + refresh token mới, thu hồi refresh token cũ, lưu refresh token hash mới vào Redis + DB.
 
 ### 3.6 Đăng xuất
 1. Người dùng đã đăng nhập gọi logout.
-2. Hệ thống thu hồi toàn bộ refresh token còn hiệu lực của user.
-3. Access token hiện tại sẽ tự hết hạn theo TTL, còn refresh token không còn dùng lại được.
+2. Hệ thống xóa session theo deviceId (Redis key auth:<userId>:<deviceId>).
+3. Hệ thống thu hồi refresh token theo userId + deviceId trong DB.
+4. Access token hiện tại sẽ tự hết hạn theo TTL, refresh token không còn dùng lại được.
 
 ## 4. Ràng buộc nghiệp vụ
 - Email phải là duy nhất.
@@ -58,13 +59,15 @@ Feature Auth quản lý vòng đời xác thực tài khoản: đăng ký, gửi
 - User bị khoá không được đăng nhập và cũng không được refresh token.
 - Mã xác thực chỉ có hiệu lực 15 phút.
 - Nhập sai mã quá số lần cho phép thì phải xin mã mới. (limit: 5)
-- Mỗi lần xác minh thành công hoặc làm mới token hợp lệ đều phải lưu refresh token mới vào DB.
+- Mỗi lần xác minh thành công hoặc làm mới token hợp lệ đều phải lưu refresh token hash mới vào Redis + DB.
+- Refresh token phải được hash trước khi lưu; không lưu raw token.
+- Middleware auth phải verify JWT access token và check Redis whitelist (fallback DB nếu Redis miss).
 
 ## 5. Side effect và trạng thái
 - Đăng ký và resend code: phát sinh email queue.
 - Verify email: cập nhật trạng thái isVerified của user, xoá dữ liệu tạm trong Redis, sinh token mới.
-- Login và refresh token: tạo refresh token record mới.
-- Logout: thu hồi toàn bộ refresh token của user.
+- Login và refresh token: tạo refresh token record mới, lưu Redis session theo deviceId.
+- Logout: thu hồi refresh token theo deviceId và xóa Redis session tương ứng.
 
 ## 6. Điểm cần lưu ý khi test
 - Đăng ký cùng email hai lần phải bị chặn.
@@ -72,7 +75,8 @@ Feature Auth quản lý vòng đời xác thực tài khoản: đăng ký, gửi
 - Login khi chưa verify phải bị chặn.
 - Login khi account bị lock phải bị chặn.
 - Refresh token cũ sau khi refresh phải không còn dùng được.
-- Logout phải khiến mọi refresh token hiện có của user bị vô hiệu hóa.
+- Logout theo device phải vô hiệu hóa đúng session của device đó.
+- Middleware phải trả 401 nếu Redis không có session và DB fallback không hợp lệ.
 
 ## 7. File liên quan
 - [src/services/AuthService.ts](../../src/services/AuthService.ts)
