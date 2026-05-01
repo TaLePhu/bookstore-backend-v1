@@ -1,7 +1,7 @@
 import { In, Repository } from 'typeorm';
 import { Book } from '@entities/Book';
 import { AppDataSource } from '@config/data-source';
-import { IBookRepository } from '@repositories/interfaces/IBookRepository';
+import { IBookRepository, BookListOptions } from '@repositories/interfaces/IBookRepository';
 import { BookResponse } from '@dtos/book/BookResponseDto';
 import { OrderStatus } from '@entities/Order';
 
@@ -36,38 +36,33 @@ export class BookRepository implements IBookRepository {
     });
   }
 
-  private getCurrentMonthRangeUtc7(now: Date = new Date()): { startUtc: Date; endUtc: Date } {
-    const msPerHour = 60 * 60 * 1000;
-    const utc7OffsetHours = 7;
-
-    const utcMs = now.getTime() + now.getTimezoneOffset() * 60 * 1000;
-    const utc7Ms = utcMs + utc7OffsetHours * msPerHour;
-    const utc7Date = new Date(utc7Ms);
-
-    const year = utc7Date.getUTCFullYear();
-    const month = utc7Date.getUTCMonth();
-
-    const monthStartUtc7 = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
-    const nextMonthStartUtc7 = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0, 0));
-
-    return {
-      startUtc: new Date(monthStartUtc7.getTime() - utc7OffsetHours * msPerHour),
-      endUtc: new Date(nextMonthStartUtc7.getTime() - utc7OffsetHours * msPerHour),
-    };
+  async findAll(page: number, limit: number): Promise<{ data: BookResponse[]; total: number }> {
+    return this.findAllWithFilters({ page, limit });
   }
 
-  async findAll(page: number, limit: number): Promise<{ data: BookResponse[]; total: number }> {
-    const skip = (page - 1) * limit;
-    
-    const [books, total] = await this.repository.findAndCount({
-      skip,
-      take: limit,
-      order: {
-        createdAt: 'DESC',
-      },
-      relations: ['category']
-    });
+  async findAllWithFilters(options: BookListOptions): Promise<{ data: BookResponse[]; total: number }> {
+    const { page, limit, sort, categoryId } = options;
 
+    if (sort === 'bestseller') {
+      return this.findBestSellerBooksAllTime(page, limit, categoryId);
+    }
+
+    const skip = (page - 1) * limit;
+    const qb = this.repository
+      .createQueryBuilder('book')
+      .leftJoinAndSelect('book.category', 'category');
+
+    if (categoryId) {
+      qb.where('book.categoryId = :categoryId', { categoryId });
+    }
+
+    if (sort === 'latest') {
+      qb.orderBy('book.releaseDate', 'DESC', 'NULLS LAST').addOrderBy('book.createdAt', 'DESC');
+    } else {
+      qb.orderBy('book.createdAt', 'DESC');
+    }
+
+    const [books, total] = await qb.skip(skip).take(limit).getManyAndCount();
     const data = await this.mapBooksToResponse(books);
 
     return { data, total };
@@ -111,52 +106,36 @@ export class BookRepository implements IBookRepository {
     return { data, total };
   }
 
-  async findLatestBooksTop10(): Promise<BookResponse[]> {
-    const books = await this.repository
-      .createQueryBuilder('book')
-      .leftJoinAndSelect('book.category', 'category')
-      .orderBy('book.releaseDate', 'DESC', 'NULLS LAST')
-      .addOrderBy('book.createdAt', 'DESC')
-      .take(10)
-      .getMany();
-
-    return this.mapBooksToResponse(books);
-  }
-
-  async findBooksByCategoryTop10(categoryId: string): Promise<BookResponse[]> {
-    const books = await this.repository
-      .createQueryBuilder('book')
-      .leftJoinAndSelect('book.category', 'category')
-      .where('book.categoryId = :categoryId', { categoryId })
-      .orderBy('book.releaseDate', 'DESC', 'NULLS LAST')
-      .addOrderBy('book.createdAt', 'DESC')
-      .take(10)
-      .getMany();
-
-    return this.mapBooksToResponse(books);
-  }
-
-  async findBestSellerBooksCurrentMonthTop10(): Promise<BookResponse[]> {
-    const { startUtc, endUtc } = this.getCurrentMonthRangeUtc7();
-
-    const topRawRows = await this.repository
+  private async findBestSellerBooksAllTime(page: number, limit: number, categoryId?: string): Promise<{ data: BookResponse[]; total: number }> {
+    const skip = (page - 1) * limit;
+    const baseQb = this.repository
       .createQueryBuilder('book')
       .innerJoin('book.orderItems', 'orderItem')
       .innerJoin('orderItem.order', 'order')
       .select('book.id', 'bookId')
       .addSelect('SUM(orderItem.quantity)', 'totalSold')
-      .where('order.status = :completedStatus', { completedStatus: OrderStatus.COMPLETED })
-      .andWhere('order.createdAt >= :startUtc', { startUtc })
-      .andWhere('order.createdAt < :endUtc', { endUtc })
-      .groupBy('book.id')
-      .orderBy('SUM(orderItem.quantity)', 'DESC')
-      .addOrderBy('MAX(order.createdAt)', 'DESC')
-      .limit(10)
-      .getRawMany<{ bookId: string; totalSold: string }>();
+      .where('order.status = :completedStatus', { completedStatus: OrderStatus.COMPLETED });
 
-    const sortedBookIds = topRawRows.map((row) => row.bookId);
+    if (categoryId) {
+      baseQb.andWhere('book.categoryId = :categoryId', { categoryId });
+    }
+
+    baseQb.groupBy('book.id')
+      .orderBy('SUM(orderItem.quantity)', 'DESC')
+      .addOrderBy('MAX(order.createdAt)', 'DESC');
+
+    const totalRows = await baseQb.clone().getRawMany<{ bookId: string }>();
+    const total = totalRows.length;
+
+    if (total === 0) {
+      return { data: [], total };
+    }
+
+    const pageRows = await baseQb.clone().skip(skip).take(limit).getRawMany<{ bookId: string }>();
+    const sortedBookIds = pageRows.map((row) => row.bookId);
+
     if (sortedBookIds.length === 0) {
-      return [];
+      return { data: [], total };
     }
 
     const books = await this.repository.find({
@@ -166,8 +145,9 @@ export class BookRepository implements IBookRepository {
 
     const orderMap = new Map(sortedBookIds.map((id, index) => [id, index]));
     const sortedBooks = books.sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
+    const data = await this.mapBooksToResponse(sortedBooks);
 
-    return this.mapBooksToResponse(sortedBooks);
+    return { data, total };
   }
 }
 

@@ -24,8 +24,32 @@ export class BookController {
   getAllBooks = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { page, limit } = getSafePagination(req.query.page, req.query.limit);
+      const rawSort = typeof req.query.sort === 'string' ? req.query.sort.trim().toLowerCase() : '';
+      const sort = rawSort === '' ? undefined : rawSort;
+      const categoryId = typeof req.query.category_id === 'string' ? req.query.category_id.trim() : undefined;
 
-      const result = await this.bookService.getAllBooks(page, limit);
+      if (sort && sort !== 'latest' && sort !== 'bestseller') {
+        res.status(400).json({
+          success: false,
+          message: 'Lỗi: sort không hợp lệ. Chỉ hỗ trợ latest | bestseller.'
+        });
+        return;
+      }
+
+      if (categoryId && !isUuid(categoryId)) {
+        res.status(400).json({
+          success: false,
+          message: 'Lỗi: category_id không đúng định dạng UUID.'
+        });
+        return;
+      }
+
+      const result = await this.bookService.getAllBooks({
+        page,
+        limit,
+        sort: sort as 'latest' | 'bestseller' | undefined,
+        categoryId
+      });
       
       res.status(200).json({
         success: true,
@@ -80,55 +104,6 @@ export class BookController {
           page: result.page,
           limit: result.limit
         }
-      });
-    } catch (error) {
-      next(error);
-    }
-  };
-
-  getLatestBooks = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const books = await this.bookService.getLatestBooks();
-
-      res.status(200).json({
-        success: true,
-        data: books,
-      });
-    } catch (error) {
-      next(error);
-    }
-  };
-
-  getBooksByCategoryId = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const { categoryId } = req.params;
-
-      if (!isUuid(categoryId)) {
-        res.status(400).json({
-          success: false,
-          message: 'Lỗi: categoryId không đúng định dạng UUID.',
-        });
-        return;
-      }
-
-      const books = await this.bookService.getBooksByCategoryId(categoryId);
-
-      res.status(200).json({
-        success: true,
-        data: books,
-      });
-    } catch (error) {
-      next(error);
-    }
-  };
-
-  getBestSellerBooks = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const books = await this.bookService.getBestSellerBooks();
-
-      res.status(200).json({
-        success: true,
-        data: books,
       });
     } catch (error) {
       next(error);

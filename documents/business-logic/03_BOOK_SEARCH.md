@@ -1,7 +1,7 @@
 # Book và Search - Logic Nghiệp Vụ
 
 ## 1. Mục tiêu
-Feature Book quản lý danh sách sách, xem chi tiết sách, tìm kiếm sách theo từ khóa, lấy sách mới phát hành, lọc sách theo danh mục và lấy danh sách bán chạy trong tháng.
+Feature Book quản lý danh sách sách, xem chi tiết sách, tìm kiếm sách theo từ khóa, lọc theo danh mục, và sắp xếp theo mới phát hành hoặc bán chạy.
 
 ## 2. Actor và quyền truy cập
 - Tất cả endpoint sách hiện tại là public.
@@ -26,36 +26,29 @@ Feature Book quản lý danh sách sách, xem chi tiết sách, tìm kiếm sác
 3. Nếu query hợp lệ thì hệ thống gọi repository search để tìm dữ liệu phù hợp.
 4. Kết quả trả về vẫn theo cùng cấu trúc data + pagination.
 
-### 3.4 Lấy sách mới phát hành (Top 10)
-1. Client gọi endpoint `GET /books/latest`.
-2. Hệ thống truy vấn sách, sắp xếp theo `release_date` giảm dần, các bản ghi `NULL release_date` được đưa xuống cuối.
-3. Nếu trùng ngày phát hành thì tie-break theo `createdAt` giảm dần.
-4. Kết quả trả về tối đa 10 cuốn.
-
-### 3.5 Lấy sách theo categoryId (Top 10)
-1. Client gọi endpoint `GET /books/category/:categoryId`.
-2. Controller kiểm tra `categoryId` có đúng UUID hay không:
-	- Sai định dạng -> trả lỗi 400.
-3. Service kiểm tra category có tồn tại hay không:
-	- Không tồn tại -> trả lỗi 404.
-4. Nếu hợp lệ, hệ thống lọc theo `categoryId`, sắp xếp theo `release_date` giảm dần và trả tối đa 10 cuốn.
-
-### 3.6 Lấy sách bán chạy trong tháng (Top 10)
-1. Client gọi endpoint `GET /books/best-sellers`.
-2. Hệ thống aggregate từ `orders` và `order_items` theo tháng hiện tại (UTC+7).
-3. Chỉ tính các đơn có trạng thái `COMPLETED`.
-4. Group theo sách, sắp xếp theo tổng `quantity` bán ra giảm dần.
-5. Kết quả trả về tối đa 10 cuốn; nếu dữ liệu không đủ thì trả ít hơn 10.
+### 3.4 Lấy danh sách sách có filter/sort
+1. Client gọi `GET /books` kèm `page`, `limit`, và có thể có `sort`, `category_id`.
+2. Controller chuẩn hoá phân trang như mục 3.1.
+3. Controller validate:
+	- `sort` chỉ nhận `latest` hoặc `bestseller` (khác -> 400).
+	- `category_id` là UUID hợp lệ (sai định dạng -> 400).
+4. Service kiểm tra category tồn tại nếu có `category_id`:
+	- Không tồn tại -> 404.
+5. Hệ thống áp dụng filter/sort:
+	- `sort=latest`: sắp xếp theo `release_date DESC NULLS LAST`, tie-break `createdAt DESC`.
+	- `sort=bestseller`: aggregate all-time từ `orders` và `order_items`, chỉ tính đơn `COMPLETED`, sắp xếp theo tổng `quantity` bán ra giảm dần.
+	- Nếu không có `sort`: mặc định `createdAt DESC`.
+6. Kết quả trả về theo pagination (data + metadata).
 
 ## 4. Ràng buộc nghiệp vụ
 - Pagination phải an toàn, không cho limit vượt quá 50.
 - Chi tiết sách chỉ hợp lệ với UUID đúng định dạng.
 - Query rỗng không được quăng lỗi; thay vào đó trả về danh sách rỗng.
 - Search hiện tại là nghiệp vụ truy xuất, không có bước write state.
-- `GET /books/latest` cố định trả tối đa 10 cuốn, không nhận query `limit`.
-- `GET /books/category/:categoryId` cố định trả tối đa 10 cuốn, không nhận query `limit`.
-- `GET /books/best-sellers` cố định trả tối đa 10 cuốn, không nhận query `limit`.
-- Best-sellers chỉ tính đơn `COMPLETED` trong tháng hiện tại theo UTC+7.
+- `GET /books` hỗ trợ `sort=latest|bestseller` và `category_id`.
+- `sort` không hợp lệ trả 400.
+- `category_id` sai định dạng trả 400; hợp lệ nhưng không tồn tại trả 404.
+- `sort=bestseller` chỉ tính đơn `COMPLETED` (all-time).
 - `release_date` được phép `NULL` trong DB để tương thích dữ liệu cũ; dữ liệu `NULL` không được ưu tiên trong API latest.
 
 ## 5. Side effect và trạng thái
@@ -67,11 +60,10 @@ Feature Book quản lý danh sách sách, xem chi tiết sách, tìm kiếm sác
 - limit lớn hơn 50 phải bị cắt xuống 50.
 - id sai định dạng phải trả 400 trước khi đi vào service.
 - q rỗng phải trả danh sách rỗng, không phải lỗi.
-- `GET /books/latest` trả `200` với tối đa 10 phần tử, thứ tự theo `release_date DESC`.
-- `GET /books/category/:categoryId` với UUID sai định dạng phải trả `400`.
-- `GET /books/category/:categoryId` với UUID hợp lệ nhưng category không tồn tại phải trả `404`.
-- `GET /books/category/:categoryId` với category hợp lệ trả tối đa 10 cuốn đúng danh mục.
-- `GET /books/best-sellers` trả tối đa 10 cuốn; có thể là mảng rỗng nếu tháng hiện tại chưa có đơn `COMPLETED`.
+- `GET /books?sort=latest` trả kết quả theo `release_date DESC NULLS LAST` và có pagination.
+- `GET /books?category_id=<uuid>` với UUID sai định dạng phải trả `400`.
+- `GET /books?category_id=<uuid>` với UUID hợp lệ nhưng category không tồn tại phải trả `404`.
+- `GET /books?sort=bestseller` trả danh sách theo tổng số lượng bán ra (all-time), có pagination.
 
 ## 7. File liên quan
 - [src/services/BookService.ts](../../src/services/BookService.ts)

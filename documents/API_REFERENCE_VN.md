@@ -83,17 +83,17 @@ Authorization: Bearer <accessToken>
 
 | Method | Path | Auth | Query | Mô tả |
 |---|---|---|---|---|
-| GET | /books | No | `page`, `limit` | Danh sách sách có phân trang |
+| GET | /books | No | `page`, `limit`, `sort?`, `category_id?` | Danh sách sách có phân trang (hỗ trợ sort, lọc theo danh mục) |
 | GET | /books/search | No | `q`, `page`, `limit` | Tìm kiếm sách |
-| GET | /books/latest | No | none | Danh sách tối đa 10 cuốn mới phát hành (ưu tiên `release_date` mới nhất) |
-| GET | /books/category/:categoryId | No | none | Danh sách tối đa 10 cuốn theo danh mục |
-| GET | /books/best-sellers | No | none | Danh sách tối đa 10 cuốn bán chạy trong tháng hiện tại (UTC+7) |
 | GET | /books/:id | No | none | Chi tiết sách theo UUID |
 
 Ghi chú cho Books API mới:
-- `GET /books/latest`, `GET /books/category/:categoryId`, `GET /books/best-sellers` đều giới hạn cố định tối đa 10 cuốn.
-- `GET /books/category/:categoryId` trả `400` nếu `categoryId` sai UUID và trả `404` nếu category không tồn tại.
-- `GET /books/best-sellers` chỉ tính đơn hàng trạng thái `COMPLETED` trong tháng hiện tại theo UTC+7.
+- `GET /books` hỗ trợ query:
+  - `sort=latest`: sắp xếp theo `release_date DESC NULLS LAST`, tie-break `createdAt DESC`.
+  - `sort=bestseller`: sắp xếp theo tổng số lượng bán ra (all-time), chỉ tính đơn `COMPLETED`.
+  - `category_id`: lọc theo danh mục.
+- `sort` không hợp lệ trả `400`.
+- `category_id` sai UUID trả `400`, UUID hợp lệ nhưng category không tồn tại trả `404`.
 
 ### 4.3 Categories
 
@@ -181,16 +181,11 @@ Ghi chú cho Address API:
 - `GET /books/:id`:
   - `id`: UUID hợp lệ
   - Sai định dạng UUID -> `400`
-- `GET /books/category/:categoryId`:
-  - `categoryId`: UUID hợp lệ
-  - Sai định dạng UUID -> `400`
-  - UUID hợp lệ nhưng category không tồn tại -> `404`
-- `GET /books/latest`, `GET /books/category/:categoryId`, `GET /books/best-sellers`:
-  - Không nhận query `limit`
-  - Trả tối đa 10 bản ghi
-- `GET /books/best-sellers`:
-  - Chỉ tính đơn `COMPLETED`
-  - Khoảng thời gian là tháng hiện tại theo UTC+7
+- `GET /books`:
+  - `sort` chỉ nhận `latest` hoặc `bestseller` (khác -> `400`)
+  - `category_id` là UUID hợp lệ, sai định dạng -> `400`
+  - `category_id` hợp lệ nhưng không tồn tại -> `404`
+  - `sort=bestseller` chỉ tính đơn `COMPLETED` (all-time)
 
 ### Order
 
@@ -252,7 +247,19 @@ Content-Type: application/json
 ### Get latest books
 
 ```http
-GET {{baseUrl}}/books/latest
+GET {{baseUrl}}/books?sort=latest
+```
+
+### Get best-seller books
+
+```http
+GET {{baseUrl}}/books?sort=bestseller
+```
+
+### Get books by category
+
+```http
+GET {{baseUrl}}/books?category_id=<uuid>
 ```
 
 ### Get books by category

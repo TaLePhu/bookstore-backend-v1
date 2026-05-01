@@ -1,5 +1,5 @@
 import { injectable, inject } from 'tsyringe';
-import { IBookRepository } from '@repositories/interfaces/IBookRepository';
+import { IBookRepository, BookListOptions } from '@repositories/interfaces/IBookRepository';
 import { ICategoryRepository } from '@repositories/interfaces/ICategoryRepository';
 import { TOKENS } from '@config/container';
 import { NotFoundError } from '@utils/errors';
@@ -12,8 +12,22 @@ export class BookService {
     @inject(TOKENS.CATEGORY_REPOSITORY) private categoryRepository: ICategoryRepository
   ) {}
 
-  async getAllBooks(page: number = 1, limit: number = 10): Promise<{ data: BookResponse[]; total: number; page: number; limit: number }> {
-    const { data, total } = await this.bookRepository.findAll(page, limit);
+  async getAllBooks(options: BookListOptions): Promise<{ data: BookResponse[]; total: number; page: number; limit: number }> {
+    const { page, limit, sort, categoryId } = options;
+
+    if (categoryId) {
+      const category = await this.categoryRepository.findById(categoryId);
+      if (!category) {
+        throw new NotFoundError('Danh mục không tồn tại (Category not found)');
+      }
+    }
+
+    const { data, total } = await this.bookRepository.findAllWithFilters({
+      page,
+      limit,
+      sort,
+      categoryId
+    });
     return { data, total, page, limit };
   }
 
@@ -31,23 +45,6 @@ export class BookService {
     }
     const { data, total } = await this.bookRepository.search(query, page, limit);
     return { data, total, page, limit };
-  }
-
-  async getLatestBooks(): Promise<BookResponse[]> {
-    return this.bookRepository.findLatestBooksTop10();
-  }
-
-  async getBooksByCategoryId(categoryId: string): Promise<BookResponse[]> {
-    const category = await this.categoryRepository.findById(categoryId);
-    if (!category) {
-      throw new NotFoundError('Danh mục không tồn tại (Category not found)');
-    }
-
-    return this.bookRepository.findBooksByCategoryTop10(categoryId);
-  }
-
-  async getBestSellerBooks(): Promise<BookResponse[]> {
-    return this.bookRepository.findBestSellerBooksCurrentMonthTop10();
   }
 }
 
