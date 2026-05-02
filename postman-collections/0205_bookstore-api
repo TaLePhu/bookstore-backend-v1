@@ -2,14 +2,13 @@
   "info": {
     "_postman_id": "8984a432-4080-4dd9-b51e-0b8929fa87d8",
     "name": "BookStore API v1",
-    "description": "Version 1704: includes Address API and default-address rules.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_exporter_id": "51501151",
     "_collection_link": "https://go.postman.co/collection/51501151-8984a432-4080-4dd9-b51e-0b8929fa87d8?source=collection_link"
   },
   "item": [
     {
-      "name": "Authentication",
+      "name": "1. Auth API",
       "item": [
         {
           "name": "1. Register User",
@@ -35,7 +34,7 @@
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n  \"userName\": \"user phu1\",\r\n  \"email\": \"{{email}}\",\r\n  \"password\": \"Ptest123\"\r\n}",
+              "raw": "{\r\n  \"userName\": \"user ptest\",\r\n  \"email\": \"{{email}}\",\r\n  \"password\": \"Ptest123\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -55,13 +54,13 @@
           "response": []
         },
         {
-          "name": "VerifyEmail",
+          "name": "2. VerifyEmail",
           "request": {
             "method": "POST",
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n  \"email\": \"{{email}}\",\r\n  \"code\": \"637406\"\r\n}",
+              "raw": "{\r\n  \"email\": \"{{email}}\",\r\n  \"code\": \"179288\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -136,7 +135,9 @@
                   "    pm.collectionVariables.set(\"refreshToken\", jsonData.data.refreshToken);",
                   "}"
                 ],
-                "type": "text/javascript"
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
               }
             }
           ],
@@ -145,7 +146,7 @@
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n    \"refreshToken\": \"{{refreshToken}}\"\r\n}",
+              "raw": "{\r\n    \"refreshToken\": \"{{refreshToken}}\",\r\n    \"deviceId\": \"{{deviceId}}\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -194,7 +195,7 @@
           "response": []
         },
         {
-          "name": "ResendCode",
+          "name": "5. ResendCode",
           "request": {
             "method": "POST",
             "header": [],
@@ -330,17 +331,24 @@
       "name": "Book",
       "item": [
         {
-          "name": "getAllBooks",
+          "name": "getAllBooksDefaultPageLimit",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}books/",
+              "raw": "{{baseUrl}}books?page=1&limit=5",
               "host": [
                 "{{baseUrl}}books"
               ],
-              "path": [
-                ""
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
               ]
             }
           },
@@ -352,13 +360,13 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/books/{{bookId}}",
+              "raw": "{{baseUrl}}/books/{{bookId1}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "books",
-                "{{bookId}}"
+                "{{bookId1}}"
               ]
             }
           },
@@ -393,12 +401,157 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}categories/",
+              "raw": "{{baseUrl}}categories",
               "host": [
                 "{{baseUrl}}categories"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "getBooksBestseller",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}books?sort=bestseller&page=1&limit=2",
+              "host": [
+                "{{baseUrl}}books"
+              ],
+              "query": [
+                {
+                  "key": "sort",
+                  "value": "bestseller"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "2"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "getBooksByReleaseDate",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/books?sort=latest&page=1&limit=2",
+              "host": [
+                "{{baseUrl}}"
               ],
               "path": [
-                ""
+                "books"
+              ],
+              "query": [
+                {
+                  "key": "sort",
+                  "value": "latest"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "2"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "getBooksByCategoryId",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/books?category_id={{categoryId}}&page=1&limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "books"
+              ],
+              "query": [
+                {
+                  "key": "category_id",
+                  "value": "{{categoryId}}"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "getBooksByCategoryIdSortLatest",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/books?category_id={{categoryId}}&sort=latest&page=1&limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "books"
+              ],
+              "query": [
+                {
+                  "key": "category_id",
+                  "value": "{{categoryId}}"
+                },
+                {
+                  "key": "sort",
+                  "value": "latest"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "testError_Inv_Sort",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/books?sort=invalid",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "books"
+              ],
+              "query": [
+                {
+                  "key": "sort",
+                  "value": "invalid"
+                }
               ]
             }
           },
@@ -426,7 +579,7 @@
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n  \"bookId\": \"{{bookId2}}\",\r\n  \"quantity\": 5\r\n}",
+              "raw": "{\r\n  \"bookId\": \"{{bookId3}}\",\r\n  \"quantity\": 15\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -557,7 +710,7 @@
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n    \"cartItemIds\": [\r\n        \"{{cartItemId}}\"\r\n    ],\r\n    \"addressId\": \"{{addressId}}\",\r\n    \"paymentMethod\": \"COD\",\r\n    \"shippingFee\": 30000,\r\n    \"note\": \"Giao giờ hành chính giúp em\"\r\n}",
+              "raw": "{\r\n    \"cartItemIds\": [\r\n        \"{{cartItemId1}}\",\r\n        \"{{cartItemId2}}\"\r\n    ],\r\n\"receiverName\": \"Tran Thi B\",\r\n\"phone\": \"0911111111\",\r\n\"addressLine\": \"456 Duong So 2\",\r\n\"country\": \"VN\",\r\n\"provinceCode\": \"79\",\r\n\"provinceName\": \"Ho Chi Minh\",\r\n\"districtCode\": \"761\",\r\n\"districtName\": \"Quan 2\",\r\n\"wardCode\": \"26737\",\r\n\"wardName\": \"Thao Dien\",\r\n    \"paymentMethod\": \"COD\",\r\n    \"shippingFee\": 25000,\r\n    \"note\": \"Giao giờ hành chính giúp em\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -634,6 +787,140 @@
                 "{{orderId}}"
               ]
             }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Address API",
+      "item": [
+        {
+          "name": "createAddress",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n\"receiverName\": \"Tran Thi B\",\r\n\"phone\": \"0911111111\",\r\n\"addressLine\": \"456 Duong So 2\",\r\n\"country\": \"VN\",\r\n\"provinceCode\": \"79\",\r\n\"provinceName\": \"Ho Chi Minh\",\r\n\"districtCode\": \"761\",\r\n\"districtName\": \"Quan 2\",\r\n\"wardCode\": \"26737\",\r\n\"wardName\": \"Thao Dien\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}addresses",
+              "host": [
+                "{{baseUrl}}addresses"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "getMyAddresses",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}addresses",
+              "host": [
+                "{{baseUrl}}addresses"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "updateAdress",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n\"receiverName\": \"Nguyen Van A\",\r\n\"phone\": \"0901234567\",\r\n\"addressLine\": \"123 Duong So 1\",\r\n\"country\": \"VN\",\r\n\"provinceCode\": \"79\",\r\n\"provinceName\": \"Ho Chi Minh\",\r\n\"districtCode\": \"760\",\r\n\"districtName\": \"Quan 1\",\r\n\"wardCode\": \"26734\",\r\n\"wardName\": \"Ben Nghe\",\r\n\"isDefault\": true\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}addresses/{{addressId2}}",
+              "host": [
+                "{{baseUrl}}addresses"
+              ],
+              "path": [
+                "{{addressId2}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "deleteAdress",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/addresses/{{addressId1}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "addresses",
+                "{{addressId1}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "getAddressById",
+          "request": {
+            "method": "GET",
+            "header": []
           },
           "response": []
         }
@@ -818,131 +1105,6 @@
       ]
     },
     {
-      "name": "Address API",
-      "item": [
-        {
-          "name": "createAddress",
-          "request": {
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{accessToken}}",
-                  "type": "string"
-                }
-              ]
-            },
-            "method": "POST",
-            "header": [],
-            "body": {
-              "mode": "raw",
-              "raw": "{\r\n  \"receiverName\": \"Nguyen Van A\",\r\n  \"phone\": \"0901234567\",\r\n  \"addressLine\": \"123 Duong So 1\",\r\n  \"country\": \"VN\",\r\n  \"provinceCode\": \"79\",\r\n  \"provinceName\": \"Ho Chi Minh\",\r\n  \"districtCode\": \"760\",\r\n  \"districtName\": \"Quan 1\",\r\n  \"wardCode\": \"26734\",\r\n  \"wardName\": \"Ben Nghe\"\r\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}addresses",
-              "host": [
-                "{{baseUrl}}addresses"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "getMyAddresses",
-          "request": {
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{accessToken}}",
-                  "type": "string"
-                }
-              ]
-            },
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}addresses",
-              "host": [
-                "{{baseUrl}}addresses"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "updateAddress_SetDefault",
-          "request": {
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{accessToken}}",
-                  "type": "string"
-                }
-              ]
-            },
-            "method": "PATCH",
-            "header": [],
-            "body": {
-              "mode": "raw",
-              "raw": "{\r\n  \"receiverName\": \"Nguyen Van A\",\r\n  \"phone\": \"0901234567\",\r\n  \"addressLine\": \"123 Duong So 1\",\r\n  \"country\": \"VN\",\r\n  \"provinceCode\": \"79\",\r\n  \"provinceName\": \"Ho Chi Minh\",\r\n  \"districtCode\": \"760\",\r\n  \"districtName\": \"Quan 1\",\r\n  \"wardCode\": \"26734\",\r\n  \"wardName\": \"Ben Nghe\",\r\n  \"isDefault\": true\r\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}addresses/{{addressId}}",
-              "host": [
-                "{{baseUrl}}addresses"
-              ],
-              "path": [
-                "{{addressId}}"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "deleteAddress",
-          "request": {
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{accessToken}}",
-                  "type": "string"
-                }
-              ]
-            },
-            "method": "DELETE",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}addresses/{{addressId}}",
-              "host": [
-                "{{baseUrl}}addresses"
-              ],
-              "path": [
-                "{{addressId}}"
-              ]
-            }
-          },
-          "response": []
-        }
-      ]
-    },
-    {
       "name": "Health Check",
       "request": {
         "method": "GET",
@@ -975,11 +1137,6 @@
     },
     {
       "key": "refreshToken",
-      "value": "",
-      "type": "string"
-    },
-    {
-      "key": "addressId",
       "value": "",
       "type": "string"
     }
