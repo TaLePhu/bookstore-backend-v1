@@ -12,7 +12,7 @@ Feature Order xử lý bước checkout từ giỏ hàng sang đơn hàng và tr
 ### 3.1 Tạo đơn hàng từ giỏ
 1. Người dùng gửi yêu cầu checkout với các nhóm dữ liệu sau:
 	- `addressId` (nếu dùng địa chỉ đã lưu), hoặc
-	- Inline address gồm tối thiểu `addressLine`, `phone`, `receiverName` (và có thể kèm `country`, `provinceCode`, `provinceName`, `districtCode`, `districtName`, `wardCode`, `wardName`).
+	- Inline address bắt buộc đầy đủ thông tin: `receiverName`, `phone`, `country`, `provinceCode`, `provinceName`, `districtCode`, `districtName`, `wardCode`, `wardName`, `addressLine`.
 	- `cartItemIds` (optional) để chỉ checkout một phần giỏ hàng.
 	- `paymentMethod` (optional), mặc định `COD`.
 	- `shippingFee`, `note` (optional).
@@ -21,11 +21,11 @@ Feature Order xử lý bước checkout từ giỏ hàng sang đơn hàng và tr
 4. Nếu có `cartItemIds`, hệ thống lọc item theo danh sách này và từ chối nếu có item không thuộc giỏ hiện tại.
 5. Hệ thống resolve địa chỉ giao hàng:
 	- Nếu có `addressId`: bắt buộc địa chỉ phải thuộc về user hiện tại.
-	- Nếu không có `addressId`: bắt buộc đủ `addressLine`, `phone`, `receiverName` để tạo mới Address và gán vào order.
+	- Nếu không có `addressId`: bắt buộc đủ 10 trường thông tin địa chỉ như trên để tạo mới Address và gán vào order.
 6. Toàn bộ bước write chạy trong một transaction.
 7. Mỗi book trong nhóm item được checkout được lock `pessimistic_write` để tránh tranh chấp stock.
 8. Hệ thống kiểm tra stock từng book trước khi tạo order.
-9. Nếu hợp lệ, hệ thống tạo Order với status `PENDING`.
+9. Nếu hợp lệ, hệ thống sinh mã đơn hàng `orderCode` (định dạng `ORD-[DDMMYY]-[4 ký tự ngẫu nhiên]`) và tạo Order với status `PENDING`.
 10. Hệ thống tạo Payment tương ứng với `paymentMethod` (mặc định `COD`) và `amount = totalAmount`.
 11. Hệ thống tạo OrderItem, trừ stock của từng book và chỉ xoá các CartItem đã được checkout.
 12. Sau cùng hệ thống reload đơn hàng và trả kết quả mới nhất cho client.
@@ -49,8 +49,8 @@ Ghi chú:
 - Nếu có truyền `cartItemIds`, tất cả ID phải thuộc giỏ hiện tại của user.
 - Địa chỉ giao hàng phải resolve được theo một trong hai cách:
 	- `addressId` thuộc chính user tạo đơn, hoặc
-	- Inline address đủ bộ tối thiểu `addressLine`, `phone`, `receiverName`.
-- Nếu không có `addressId` và thiếu thông tin inline tối thiểu thì trả lỗi `400`.
+	- Inline address đủ 10 trường thông tin.
+- Nếu không có `addressId` và thiếu thông tin inline thì trả lỗi `400`.
 - Stock phải đủ cho các item thực sự được checkout trước khi commit transaction.
 - Sau khi tạo đơn thành công, chỉ các cart item đã checkout mới bị xoá.
 - Order mới tạo luôn bắt đầu ở trạng thái `PENDING`.
@@ -67,7 +67,7 @@ Ghi chú:
 ## 7. Điểm cần lưu ý khi test
 - Tạo đơn khi cart rỗng phải bị chặn.
 - Truyền `cartItemIds` không thuộc giỏ hiện tại phải bị từ chối.
-- Không có `addressId` và thiếu một trong các trường `addressLine`, `phone`, `receiverName` phải trả lỗi `400`.
+- Không có `addressId` và thiếu một trong các trường inline address phải trả lỗi `400`.
 - Address không thuộc user phải bị từ chối.
 - Nếu một sách không đủ stock thì toàn bộ checkout phải fail.
 - Sau khi checkout thành công, stock phải giảm và chỉ các item đã checkout bị xoá khỏi giỏ.

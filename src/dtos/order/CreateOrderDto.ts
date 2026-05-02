@@ -7,7 +7,8 @@ import {
   IsString,
   MaxLength,
   IsArray,
-  IsEnum
+  IsEnum,
+  ValidateIf
 } from 'class-validator';
 import { PaymentMethod } from '@entities/Payment';
 
@@ -23,43 +24,53 @@ export class CreateOrderDto {
   cartItemIds?: string[];
 
   // Inline address info (used if addressId is not provided)
-  @IsOptional()
+  @ValidateIf((o) => !o.addressId)
+  @IsNotEmpty({ message: 'country không được để trống khi không chọn địa chỉ có sẵn' })
   @IsString()
   country?: string;
 
-  @IsOptional()
+  @ValidateIf((o) => !o.addressId)
+  @IsNotEmpty({ message: 'provinceCode không được để trống khi không chọn địa chỉ có sẵn' })
   @IsString()
   provinceCode?: string;
 
-  @IsOptional()
+  @ValidateIf((o) => !o.addressId)
+  @IsNotEmpty({ message: 'provinceName không được để trống khi không chọn địa chỉ có sẵn' })
   @IsString()
   provinceName?: string;
 
-  @IsOptional()
+  @ValidateIf((o) => !o.addressId)
+  @IsNotEmpty({ message: 'districtCode không được để trống khi không chọn địa chỉ có sẵn' })
   @IsString()
   districtCode?: string;
 
-  @IsOptional()
+  @ValidateIf((o) => !o.addressId)
+  @IsNotEmpty({ message: 'districtName không được để trống khi không chọn địa chỉ có sẵn' })
   @IsString()
   districtName?: string;
 
-  @IsOptional()
+  @ValidateIf((o) => !o.addressId)
+  @IsNotEmpty({ message: 'wardCode không được để trống khi không chọn địa chỉ có sẵn' })
   @IsString()
   wardCode?: string;
 
-  @IsOptional()
+  @ValidateIf((o) => !o.addressId)
+  @IsNotEmpty({ message: 'wardName không được để trống khi không chọn địa chỉ có sẵn' })
   @IsString()
   wardName?: string;
 
-  @IsOptional()
+  @ValidateIf((o) => !o.addressId)
+  @IsNotEmpty({ message: 'addressLine không được để trống khi không chọn địa chỉ có sẵn' })
   @IsString()
   addressLine?: string;
 
-  @IsOptional()
+  @ValidateIf((o) => !o.addressId)
+  @IsNotEmpty({ message: 'phone không được để trống khi không chọn địa chỉ có sẵn' })
   @IsString()
   phone?: string;
 
-  @IsOptional()
+  @ValidateIf((o) => !o.addressId)
+  @IsNotEmpty({ message: 'receiverName không được để trống khi không chọn địa chỉ có sẵn' })
   @IsString()
   receiverName?: string;
 

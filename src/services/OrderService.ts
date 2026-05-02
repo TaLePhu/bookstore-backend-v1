@@ -55,8 +55,19 @@ export class OrderService {
       }
     } else {
       // Validate inline address
-      if (!dto.addressLine || !dto.phone || !dto.receiverName) {
-        throw new AppError('Vui lòng cung cấp cả addressId hoặc thông tin địa chỉ đầy đủ (addressLine, phone, receiverName)', 400);
+      if (
+        !dto.addressLine ||
+        !dto.phone ||
+        !dto.receiverName ||
+        !dto.country ||
+        !dto.provinceCode ||
+        !dto.provinceName ||
+        !dto.districtCode ||
+        !dto.districtName ||
+        !dto.wardCode ||
+        !dto.wardName
+      ) {
+        throw new AppError('Vui lòng cung cấp cả addressId hoặc thông tin địa chỉ đầy đủ (bao gồm: quốc gia, tỉnh/thành, quận/huyện, phường/xã, địa chỉ chi tiết, số điện thoại, người nhận)', 400);
       }
       const newAddress = addressRepo.create({
         userId,
@@ -127,10 +138,20 @@ export class OrderService {
 
       const totalAmount = itemsData.reduce((sum, item) => sum + item.subTotal, 0) + shippingFee;
 
+      // Sinh mã đơn hàng
+      const now = new Date();
+      const dd = String(now.getDate()).padStart(2, '0');
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const yy = String(now.getFullYear()).slice(-2);
+      const dateStr = `${dd}${mm}${yy}`;
+      const randomStr = Math.random().toString(36).substring(2, 6).toUpperCase();
+      const orderCode = `ORD-${dateStr}-${randomStr}`;
+
       // Tạo Order entity nối với Payment
       const order = manager.create(Order, {
         userId,
         addressId: addressId!,
+        orderCode,
         totalAmount,
         shippingFee,
         note: dto.note ?? null,

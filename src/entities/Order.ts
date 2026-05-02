@@ -28,6 +28,9 @@ export class Order {
   @PrimaryColumn('uuid')
   id: string = uuidv4();
 
+  @Column('varchar', { length: 50, unique: true, nullable: true })
+  orderCode: string;
+
   @Column('decimal', { precision: 15, scale: 2 })
   totalAmount: number;
 
