@@ -37,6 +37,9 @@ export class Book {
   @Column('integer')
   stock: number;
 
+  @Column('integer', { default: 0 })
+  soldCount: number;
+
   @Column('varchar', { name: 'isbn', length: 20, unique: true })
   isbn: string;
 

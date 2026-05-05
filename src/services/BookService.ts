@@ -4,6 +4,10 @@ import { ICategoryRepository } from '@repositories/interfaces/ICategoryRepositor
 import { TOKENS } from '@config/container';
 import { NotFoundError } from '@utils/errors';
 import { BookResponse } from '@dtos/book/BookResponseDto';
+import redisConfig from '@config/redis';
+import { CreateBookDto } from '@dtos/book/CreateBookDto';
+import { UpdateBookDto } from '@dtos/book/UpdateBookDto';
+import { Book } from '@entities/Book';
 
 @injectable()
 export class BookService {
@@ -13,7 +17,7 @@ export class BookService {
   ) {}
 
   async getAllBooks(options: BookListOptions): Promise<{ data: BookResponse[]; total: number; page: number; limit: number }> {
-    const { page, limit, sort, categoryId } = options;
+    const { page, limit, sort, categoryId, status } = options;
 
     if (categoryId) {
       const category = await this.categoryRepository.findById(categoryId);
@@ -26,16 +30,30 @@ export class BookService {
       page,
       limit,
       sort,
-      categoryId
+      categoryId,
+      status
     });
     return { data, total, page, limit };
   }
 
   async getBookById(id: string): Promise<BookResponse> {
+    const cacheKey = `book:detail:${id}`;
+
+    // 1. Kiểm tra cache
+    const cachedData = await redisConfig.get(cacheKey);
+    if (cachedData) {
+      return JSON.parse(cachedData) as BookResponse;
+    }
+
+    // 2. Nếu miss cache, gọi DB
     const book = await this.bookRepository.findById(id);
     if (!book) {
       throw new NotFoundError('Sách này không được tìm thấy (Book not found)');
     }
+
+    // 3. Set cache với TTL = 1 giờ
+    await redisConfig.set(cacheKey, JSON.stringify(book), 'EX', 3600);
+
     return book;
   }
 
@@ -45,6 +63,47 @@ export class BookService {
     }
     const { data, total } = await this.bookRepository.search(query, page, limit);
     return { data, total, page, limit };
+  }
+
+  async createBook(dto: CreateBookDto): Promise<any> {
+    if (dto.categoryId) {
+      const category = await this.categoryRepository.findById(dto.categoryId);
+      if (!category) {
+        throw new NotFoundError('Danh mục không tồn tại');
+      }
+    }
+
+    const { images, releaseDate, ...rest } = dto;
+    const bookData: Partial<Book> = { ...rest };
+    if (releaseDate) {
+      bookData.releaseDate = new Date(releaseDate);
+    }
+    return this.bookRepository.create(bookData, images);
+  }
+
+  async updateBook(id: string, dto: UpdateBookDto): Promise<any> {
+    if (dto.categoryId) {
+      const category = await this.categoryRepository.findById(dto.categoryId);
+      if (!category) {
+        throw new NotFoundError('Danh mục không tồn tại');
+      }
+    }
+
+    const { images, releaseDate, ...rest } = dto;
+    const bookData: Partial<Book> = { ...rest };
+    if (releaseDate) {
+      bookData.releaseDate = new Date(releaseDate);
+    }
+    const updatedBook = await this.bookRepository.update(id, bookData, images);
+
+    if (!updatedBook) {
+      throw new NotFoundError('Sách không tồn tại');
+    }
+
+    // Xóa cache detail sau khi update
+    await redisConfig.del(`book:detail:${id}`);
+
+    return updatedBook;
   }
 }
 

@@ -181,9 +181,10 @@ export class OrderService {
       );
       await manager.save(OrderItem, orderItems);
 
-      // Trừ stock của từng Book
+      // Trừ stock và tăng soldCount của từng Book
       for (const item of itemsData) {
         await manager.decrement(Book, { id: item.bookId }, 'stock', item.quantity);
+        await manager.increment(Book, { id: item.bookId }, 'soldCount', item.quantity);
       }
 
       // Xoá các CartItems đã thanh toán

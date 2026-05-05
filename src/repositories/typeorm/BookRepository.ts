@@ -32,6 +32,7 @@ export class BookRepository implements IBookRepository {
         ...book,
         totalReviews: Number(stat?.totalReviews || 0),
         rating: Number(Number(stat?.rating || 0).toFixed(1)),
+        status: book.stock > 0 ? 'in_stock' : 'out_of_stock',
       } as BookResponse;
     });
   }
@@ -41,7 +42,7 @@ export class BookRepository implements IBookRepository {
   }
 
   async findAllWithFilters(options: BookListOptions): Promise<{ data: BookResponse[]; total: number }> {
-    const { page, limit, sort, categoryId } = options;
+    const { page, limit, sort, categoryId, status } = options;
 
     if (sort === 'bestseller') {
       return this.findBestSellerBooksAllTime(page, limit, categoryId);
@@ -53,7 +54,13 @@ export class BookRepository implements IBookRepository {
       .leftJoinAndSelect('book.category', 'category');
 
     if (categoryId) {
-      qb.where('book.categoryId = :categoryId', { categoryId });
+      qb.andWhere('book.categoryId = :categoryId', { categoryId });
+    }
+
+    if (status === 'in_stock') {
+      qb.andWhere('book.stock > 0');
+    } else if (status === 'out_of_stock') {
+      qb.andWhere('book.stock = 0');
     }
 
     if (sort === 'latest') {
@@ -148,6 +155,52 @@ export class BookRepository implements IBookRepository {
     const data = await this.mapBooksToResponse(sortedBooks);
 
     return { data, total };
+  }
+
+  async create(book: Partial<Book>, images: { imageUrl: string; isPrimary?: boolean }[]): Promise<Book> {
+    const newBook = this.repository.create(book);
+    const savedBook = await this.repository.save(newBook);
+
+    if (images && images.length > 0) {
+      const bookImageRepo = AppDataSource.getRepository('BookImage');
+      const bookImages = images.map((img) =>
+        bookImageRepo.create({
+          bookId: savedBook.id,
+          url: img.imageUrl,
+          isPrimary: img.isPrimary || false,
+        })
+      );
+      await bookImageRepo.save(bookImages);
+    }
+
+    return savedBook;
+  }
+
+  async update(id: string, bookData: Partial<Book>, images?: { imageUrl: string; isPrimary?: boolean }[]): Promise<Book | null> {
+    const existingBook = await this.repository.findOne({ where: { id } });
+    if (!existingBook) return null;
+
+    this.repository.merge(existingBook, bookData);
+    const updatedBook = await this.repository.save(existingBook);
+
+    if (images) {
+      const bookImageRepo = AppDataSource.getRepository('BookImage');
+      // Xoá ảnh cũ
+      await bookImageRepo.delete({ bookId: id });
+      // Thêm ảnh mới
+      if (images.length > 0) {
+        const bookImages = images.map((img) =>
+          bookImageRepo.create({
+            bookId: updatedBook.id,
+            url: img.imageUrl,
+            isPrimary: img.isPrimary || false,
+          })
+        );
+        await bookImageRepo.save(bookImages);
+      }
+    }
+
+    return updatedBook;
   }
 }
 

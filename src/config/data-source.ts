@@ -33,6 +33,7 @@ import { AddBookReleaseDate1776600000000 } from '../migrations/1776600000000-Add
 import { BackfillBookReleaseDate1776600000001 } from '../migrations/1776600000001-BackfillBookReleaseDate';
 import { AddRefreshTokenDeviceId1777000000000 } from '@/migrations/1777000000000-AddRefreshTokenDeviceId';
 import { AddOrderCodeToOrder1777710182872 } from '../migrations/1777710182872-AddOrderCodeToOrder';
+import { AddSoldCountToBook1777881429452 } from '../migrations/1777881429452-AddSoldCountToBook';
 
 const env = getEnv();
 
@@ -76,6 +77,7 @@ export const AppDataSource = new DataSource({
     BackfillBookReleaseDate1776600000001,
     AddRefreshTokenDeviceId1777000000000,
     AddOrderCodeToOrder1777710182872,
+    AddSoldCountToBook1777881429452,
   ],
   subscribers: [],
   cache: false,

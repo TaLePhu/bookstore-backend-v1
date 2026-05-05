@@ -1,4 +1,5 @@
 import { BookResponse } from '@dtos/book/BookResponseDto';
+import { Book } from '@entities/Book';
 
 export type BookListSort = 'latest' | 'bestseller';
 
@@ -7,6 +8,7 @@ export interface BookListOptions {
   limit: number;
   sort?: BookListSort;
   categoryId?: string;
+  status?: 'in_stock' | 'out_of_stock';
 }
 
 export interface IBookRepository {
@@ -14,4 +16,6 @@ export interface IBookRepository {
   findAllWithFilters(options: BookListOptions): Promise<{ data: BookResponse[]; total: number }>;
   findById(id: string): Promise<BookResponse | null>;
   search(query: string, page: number, limit: number): Promise<{ data: BookResponse[]; total: number }>;
+  create(book: Partial<Book>, images: { imageUrl: string; isPrimary?: boolean }[]): Promise<Book>;
+  update(id: string, book: Partial<Book>, images?: { imageUrl: string; isPrimary?: boolean }[]): Promise<Book | null>;
 }

@@ -8,9 +8,17 @@ import { Role } from '@entities/User';
 import { UpdateUserStatusDto } from '@dtos/admin/UpdateUserStatusDto';
 import { UpdateUserRoleDto } from '@dtos/admin/UpdateUserRoleDto';
 import { ResetPasswordDto } from '@dtos/admin/ResetPasswordDto';
+import { AdminCategoryController } from '@controllers/AdminCategoryController';
+import { CreateCategoryDto } from '@dtos/category/CreateCategoryDto';
+import { UpdateCategoryDto } from '@dtos/category/UpdateCategoryDto';
+import { AdminBookController } from '@controllers/AdminBookController';
+import { CreateBookDto } from '@dtos/book/CreateBookDto';
+import { UpdateBookDto } from '@dtos/book/UpdateBookDto';
 
 const router = Router();
 const adminUserController = container.resolve(AdminUserController);
+const adminCategoryController = container.resolve(AdminCategoryController);
+const adminBookController = container.resolve(AdminBookController);
 
 // ─── Bảo vệ toàn bộ route: phải đăng nhập & phải là ADMIN ─────────────────
 router.use(authMiddleware);
@@ -65,5 +73,85 @@ router.post(
  * Hồ sơ khách hàng: thông tin cá nhân + tổng đơn hàng + tổng chi tiêu.
  */
 router.get('/customers/:id/summary', adminUserController.getCustomerSummary);
+
+// ─── Quản lý thể loại ───────────────────────────────────────────────────────
+
+/**
+ * GET /admin/categories
+ * Lấy danh sách thể loại
+ */
+router.get('/categories', adminCategoryController.getAllCategories);
+
+/**
+ * GET /admin/categories/:id
+ * Lấy chi tiết thể loại
+ */
+router.get('/categories/:id', adminCategoryController.getCategoryById);
+
+/**
+ * POST /admin/categories
+ * Tạo thể loại mới
+ */
+router.post(
+  '/categories',
+  validateDto(CreateCategoryDto),
+  adminCategoryController.createCategory,
+);
+
+/**
+ * PUT /admin/categories/:id
+ * Cập nhật thể loại
+ */
+router.put(
+  '/categories/:id',
+  validateDto(UpdateCategoryDto),
+  adminCategoryController.updateCategory,
+);
+
+/**
+ * DELETE /admin/categories/:id
+ * Xóa thể loại
+ */
+router.delete('/categories/:id', adminCategoryController.deleteCategory);
+
+// ─── Quản lý sách ───────────────────────────────────────────────────────────
+
+/**
+ * GET /admin/books
+ * Lấy danh sách sách (phân trang, lọc, sắp xếp)
+ */
+router.get('/books', adminBookController.getAllBooks);
+
+/**
+ * GET /admin/books/search
+ * Tìm kiếm sách
+ */
+router.get('/books/search', adminBookController.searchBooks);
+
+/**
+ * GET /admin/books/:id
+ * Lấy chi tiết sách
+ */
+router.get('/books/:id', adminBookController.getBookById);
+
+/**
+ * POST /admin/books
+ * Tạo sách mới
+ */
+router.post(
+  '/books',
+  validateDto(CreateBookDto),
+  adminBookController.createBook,
+);
+
+/**
+ * PUT /admin/books/:id
+ * Cập nhật thông tin sách
+ */
+router.put(
+  '/books/:id',
+  validateDto(UpdateBookDto),
+  adminBookController.updateBook,
+);
 
 export default router;
