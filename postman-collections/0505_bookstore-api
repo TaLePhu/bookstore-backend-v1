@@ -60,7 +60,7 @@
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n  \"email\": \"{{email}}\",\r\n  \"code\": \"179288\"\r\n}",
+              "raw": "{\r\n  \"email\": \"{{email}}\",\r\n  \"code\": \"919874\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -579,7 +579,7 @@
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n  \"bookId\": \"{{bookId3}}\",\r\n  \"quantity\": 15\r\n}",
+              "raw": "{\r\n  \"bookId\": \"{{bookId2}}\",\r\n  \"quantity\": 5\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -694,7 +694,7 @@
       "name": "Order API",
       "item": [
         {
-          "name": "createOrder",
+          "name": "createOrder1",
           "request": {
             "auth": {
               "type": "bearer",
@@ -710,7 +710,40 @@
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n    \"cartItemIds\": [\r\n        \"{{cartItemId1}}\",\r\n        \"{{cartItemId2}}\"\r\n    ],\r\n\"receiverName\": \"Tran Thi B\",\r\n\"phone\": \"0911111111\",\r\n\"addressLine\": \"456 Duong So 2\",\r\n\"country\": \"VN\",\r\n\"provinceCode\": \"79\",\r\n\"provinceName\": \"Ho Chi Minh\",\r\n\"districtCode\": \"761\",\r\n\"districtName\": \"Quan 2\",\r\n\"wardCode\": \"26737\",\r\n\"wardName\": \"Thao Dien\",\r\n    \"paymentMethod\": \"COD\",\r\n    \"shippingFee\": 25000,\r\n    \"note\": \"Giao giờ hành chính giúp em\"\r\n}",
+              "raw": "{\r\n    \"cartItemIds\": [\r\n        \"{{cartItemId1}}\"\r\n    ],\r\n    \"paymentMethod\": \"COD\",\r\n  \"shippingFee\": 25000,\r\n  \"note\": \"Giao hàng vào buổi sáng giúp mình nhé\",\r\n  \"receiverName\": \"Nguyen Van A\",\r\n  \"phone\": \"0987654321\",\r\n  \"country\": \"VN\",\r\n  \"provinceCode\": \"79\",\r\n  \"provinceName\": \"Hồ Chí Minh\",\r\n  \"districtCode\": \"769\",\r\n  \"districtName\": \"Thành phố Thủ Đức\",\r\n  \"wardCode\": \"26881\",\r\n  \"wardName\": \"Phường Thảo Điền\",\r\n  \"addressLine\": \"Khu biệt thự ABC, Số 1 Đường XYZ\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}orders",
+              "host": [
+                "{{baseUrl}}orders"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "2. createOrder2",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"cartItemIds\": [\r\n        \"{{cartItemId2}}\"\r\n    ],\r\n    \"addressId\": \"{{addressId1}}\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1097,6 +1130,263 @@
                 "customers",
                 "27ccf046-d5b3-4954-98b3-0e14f124a8c3",
                 "summary"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Admin book/category",
+      "item": [
+        {
+          "name": "1. CreateNewBook",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"title\": \"Nhà Giả Kim\",\r\n    \"author\": \"Paulo Coelho\",\r\n    \"price\": 79000,\r\n    \"originalPrice\": 89000,\r\n    \"categoryId\": \"{{categoryId}}\",\r\n    \"stock\": 100,\r\n    \"description\": \"Một cuốn sách thay đổi cuộc đời\",\r\n    \"isbn\": \"9786045635051\",\r\n    \"publisher\": \"NXB Hội Nhà Văn\",\r\n    \"publishYear\": 2023,\r\n    \"images\": [\r\n        {\r\n            \"imageUrl\": \"<https://example.com/anh1.jpg>\",\r\n            \"isPrimary\": true\r\n        },\r\n        {\r\n            \"imageUrl\": \"<https://example.com/anh2.jpg>\"\r\n        }\r\n    ]\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}admin/books",
+              "host": [
+                "{{baseUrl}}admin"
+              ],
+              "path": [
+                "books"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "2. AdminGetBookById",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}admin/books/{{bookId1}}",
+              "host": [
+                "{{baseUrl}}admin"
+              ],
+              "path": [
+                "books",
+                "{{bookId1}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "3. getBooksFilterSort",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}admin/books?page=1&limit=1&status=in_stock&sort=latest",
+              "host": [
+                "{{baseUrl}}admin"
+              ],
+              "path": [
+                "books"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "1"
+                },
+                {
+                  "key": "status",
+                  "value": "in_stock"
+                },
+                {
+                  "key": "sort",
+                  "value": "latest"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "4. SearchBookByTitle,Category,Author",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}admin/books/search?q=Paulo&page=1",
+              "host": [
+                "{{baseUrl}}admin"
+              ],
+              "path": [
+                "books",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "Paulo"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Manage Category",
+      "item": [
+        {
+          "name": "1. CreateCategory",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"name\": \"Tâm lý Học\",\r\n    \"description\": \"Các tác phẩm tâm lý kinh điển và hiện đại\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}admin/categories",
+              "host": [
+                "{{baseUrl}}admin"
+              ],
+              "path": [
+                "categories"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "2. AgetCategories",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}admin/categories",
+              "host": [
+                "{{baseUrl}}admin"
+              ],
+              "path": [
+                "categories"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "3. UpdateCategory",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"name\": \"Văn Học Nước Ngoài\",\r\n    \"description\": \"Cập nhật mô tả mới\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}admin/categories/{{categoryId}}",
+              "host": [
+                "{{baseUrl}}admin"
+              ],
+              "path": [
+                "categories",
+                "{{categoryId}}"
               ]
             }
           },

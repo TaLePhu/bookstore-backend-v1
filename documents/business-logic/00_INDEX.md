@@ -15,7 +15,7 @@ Bộ tài liệu này mô tả logic nghiệp vụ của từng feature trong h�
 - Category
 - Cart
 - Order
-- Admin User Management
+- Admin Management (User, Book, Category)
 
 ## Cách đọc
 Mỗi feature doc nên có các phần sau:

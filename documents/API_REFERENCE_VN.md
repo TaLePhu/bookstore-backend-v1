@@ -140,6 +140,16 @@ Ghi chú cho `POST /orders`:
 | PATCH | /admin/users/:id/role | Yes (ADMIN) | Body: `role` | Cấp role cho user |
 | POST | /admin/users/:id/reset-password | Yes (ADMIN) | Body: `newPassword` | Đặt lại mật khẩu user |
 | GET | /admin/customers/:id/summary | Yes (ADMIN) | none | Tổng quan khách hàng |
+| GET | /admin/categories | Yes (ADMIN) | none | Danh sách thể loại |
+| GET | /admin/categories/:id | Yes (ADMIN) | none | Chi tiết thể loại |
+| POST | /admin/categories | Yes (ADMIN) | Body: `name`, `description` | Tạo thể loại mới |
+| PUT | /admin/categories/:id | Yes (ADMIN) | Body: `name?`, `description?` | Cập nhật thể loại |
+| DELETE | /admin/categories/:id | Yes (ADMIN) | none | Xóa thể loại |
+| GET | /admin/books | Yes (ADMIN) | Query: `page?`, `limit?`, `sort?`, `category_id?`, `status?` | Danh sách sách (filter/sort) |
+| GET | /admin/books/search | Yes (ADMIN) | Query: `q`, `page?`, `limit?` | Tìm kiếm sách |
+| GET | /admin/books/:id | Yes (ADMIN) | none | Chi tiết sách |
+| POST | /admin/books | Yes (ADMIN) | Body: create book payload | Tạo sách mới |
+| PUT | /admin/books/:id | Yes (ADMIN) | Body: update book payload | Cập nhật sách |
 
 ### 4.8 Addresses (protected)
 
@@ -231,6 +241,14 @@ Ghi chú cho Address API:
 - Update status: `isLocked` phải là boolean
 - Update role: `role` trong enum (`ADMIN`, `STAFF`, `CUSTOMER`, `GUEST`) Note: Bỏ 'Guest'
 - Reset password: min 8 và phải có chữ hoa + chữ thường + số
+- `admin/books`:
+  - `id` và `category_id` phải là UUID hợp lệ (sai định dạng -> `400`).
+  - `sort` chỉ nhận `latest` hoặc `bestseller` (khác -> `400`).
+  - `status` chỉ nhận `in_stock` hoặc `out_of_stock`.
+  - `category_id` hợp lệ nhưng không tồn tại -> `404`.
+- `admin/categories`:
+  - `id` phải là UUID hợp lệ (sai định dạng -> `400`).
+  - `name` max 255, `description` là string.
 
 ## 6) Ví dụ request nhanh
 
@@ -366,6 +384,98 @@ Content-Type: application/json
   "wardCode": "26734",
   "wardName": "Ben Nghe",
   "isDefault": true
+}
+```
+
+### Admin - Create category
+
+```http
+POST {{baseUrl}}/admin/categories
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{
+  "name": "Van hoc",
+  "description": "Cac tac pham van hoc kinh dien"
+}
+```
+
+### Admin - Update category
+
+```http
+PUT {{baseUrl}}/admin/categories/{{categoryId}}
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{
+  "name": "Van hoc Viet Nam",
+  "description": "Cap nhat mo ta"
+}
+```
+
+### Admin - Create book
+
+```http
+POST {{baseUrl}}/admin/books
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{
+  "title": "Nha Gia Kim",
+  "author": "Paulo Coelho",
+  "price": 79000,
+  "originalPrice": 89000,
+  "categoryId": "<uuid>",
+  "stock": 100,
+  "description": "Mot cuon sach thay doi cuoc doi",
+  "isbn": "9786045635051",
+  "publisher": "NXB Hoi Nha Van",
+  "publishYear": 2023,
+  "releaseDate": "2023-01-01",
+  "images": [
+    {
+      "imageUrl": "https://example.com/anh1.jpg",
+      "isPrimary": true
+    },
+    {
+      "imageUrl": "https://example.com/anh2.jpg"
+    }
+  ]
+}
+```
+
+### Admin - Update book (partial)
+
+```http
+PUT {{baseUrl}}/admin/books/{{bookId}}
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{
+  "price": 69000,
+  "stock": 120,
+  "images": [
+    {
+      "imageUrl": "https://example.com/anh-new.jpg",
+      "isPrimary": true
+    }
+  ]
+}
+```
+
+### Admin - List books (filter)
+
+```http
+GET {{baseUrl}}/admin/books?sort=latest&status=in_stock&category_id=<uuid>&page=1&limit=10
+Authorization: Bearer <accessToken>
+```
+
+### Admin - Error example (invalid UUID)
+
+```json
+{
+  "success": false,
+  "message": "Lỗi: ID không đúng định dạng UUID."
 }
 ```
 
