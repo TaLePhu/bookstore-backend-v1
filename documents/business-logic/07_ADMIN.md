@@ -35,11 +35,16 @@ Feature Admin quản lý tài khoản người dùng, quản lý sách và quả
 2. Hệ thống trả về hồ sơ khách hàng và số liệu tổng hợp.
 
 ### 3.6 Quản lý sách (Admin)
-1. Admin tạo sách mới với thông tin bắt buộc và danh sách hình ảnh.
-2. Hệ thống validate dữ liệu đầu vào theo DTO.
-3. Hệ thống kiểm tra categoryId tồn tại trước khi tạo.
-4. Hệ thống tạo book và các ảnh liên quan.
-5. Admin có thể cập nhật sách theo id và danh sách ảnh mới (nếu truyền images).
+1. Admin tạo sách mới với thông tin bắt buộc và danh sách hình ảnh (multipart/form-data).
+2. Middleware upload kiểm tra định dạng và dung lượng ảnh (jpg/png/webp, <= 2MB/anh, toi da 5 anh).
+3. Hệ thống validate dữ liệu đầu vào theo DTO (chuyen doi tu form-data).
+4. Hệ thống kiểm tra categoryId tồn tại trước khi tạo.
+5. Upload ảnh lên Cloudinary, lay `secure_url` va `public_id`.
+6. Mo transaction DB: tao `books` va tao `book_images` (url + public_id).
+7. Neu transaction fail, he thong xoa anh vua upload (rollback Cloudinary).
+8. Admin cap nhat sach:
+	- Neu khong gui anh: chi update book.
+	- Neu gui anh: upload anh moi, transaction thay the toan bo `book_images`, sau khi commit thi xoa anh cu tren Cloudinary.
 
 ### 3.7 Quản lý danh mục (Admin)
 1. Admin tạo danh mục mới với name/description.
@@ -52,7 +57,9 @@ Feature Admin quản lý tài khoản người dùng, quản lý sách và quả
 - Danh sách admin không được lộ hash mật khẩu.
 - Các action này chỉ hợp lệ khi request đã được bảo vệ bởi auth và role guard.
 - Create/Update book yêu cầu dữ liệu hợp lệ, categoryId phải tồn tại.
-- Update book không bắt buộc truyền images; nếu có images thì ghi đè ảnh cũ.
+- Update book không bắt buộc truyền ảnh; nếu có ảnh thì ghi đè toàn bộ ảnh cũ.
+- Upload ảnh bắt buộc: 1-5 file, jpg/png/webp, <= 2MB/ảnh.
+- Ảnh được upload trước khi ghi DB; khi DB lỗi phải rollback Cloudinary.
 - Update/Delete category yêu cầu id hợp lệ, sai định dạng trả lỗi 400.
 
 ## 5. Side effect và trạng thái
@@ -61,6 +68,7 @@ Feature Admin quản lý tài khoản người dùng, quản lý sách và quả
 - Đổi role có thể thay đổi quyền truy cập ngay ở các request kế tiếp nếu token hiện tại vẫn còn hiệu lực.
 - Tạo/cập nhật sách sẽ sinh bản ghi ảnh (book_images).
 - Cập nhật sách có thể xoá cache chi tiết sách (nếu có).
+- Thay thế ảnh sẽ xoá ảnh cũ trên Cloudinary sau khi DB commit thành công.
 
 ## 6. Điểm cần lưu ý khi test
 - Admin không được khoá chính mình.
@@ -69,7 +77,8 @@ Feature Admin quản lý tài khoản người dùng, quản lý sách và quả
 - User bị khoá phải bị chặn ở luồng login và refresh token.
 - Tạo sách với categoryId không tồn tại phải trả 404.
 - Update sách với id sai định dạng phải trả 400.
-- Update sách truyền images phải thay thế toàn bộ ảnh cũ.
+- Update sách truyền ảnh phải thay thế toàn bộ ảnh cũ.
+- Upload ảnh sai định dạng/dung lượng phải trả 400.
 - Xoá category không hợp lệ phải trả lỗi 400/404 theo tình huống.
 
 ## 7. File liên quan

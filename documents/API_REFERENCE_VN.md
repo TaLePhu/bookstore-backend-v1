@@ -418,30 +418,22 @@ Content-Type: application/json
 ```http
 POST {{baseUrl}}/admin/books
 Authorization: Bearer <accessToken>
-Content-Type: application/json
+Content-Type: multipart/form-data
 
-{
-  "title": "Nha Gia Kim",
-  "author": "Paulo Coelho",
-  "price": 79000,
-  "originalPrice": 89000,
-  "categoryId": "<uuid>",
-  "stock": 100,
-  "description": "Mot cuon sach thay doi cuoc doi",
-  "isbn": "9786045635051",
-  "publisher": "NXB Hoi Nha Van",
-  "publishYear": 2023,
-  "releaseDate": "2023-01-01",
-  "images": [
-    {
-      "imageUrl": "https://example.com/anh1.jpg",
-      "isPrimary": true
-    },
-    {
-      "imageUrl": "https://example.com/anh2.jpg"
-    }
-  ]
-}
+Form-data:
+- images: (file) 1-5 anh jpg/png/webp, <2MB/anh
+- title: "Nha Gia Kim"
+- author: "Paulo Coelho"
+- price: 79000
+- originalPrice: 89000
+- categoryId: "<uuid>"
+- stock: 100
+- description: "Mot cuon sach thay doi cuoc doi"
+- isbn: "9786045635051"
+- publisher: "NXB Hoi Nha Van"
+- publishYear: 2023
+- releaseDate: "2023-01-01"
+- highlights: "[\"Noi dung hay\", \"Vi du thuc te\"]" (optional)
 ```
 
 ### Admin - Update book (partial)
@@ -449,18 +441,16 @@ Content-Type: application/json
 ```http
 PUT {{baseUrl}}/admin/books/{{bookId}}
 Authorization: Bearer <accessToken>
-Content-Type: application/json
+Content-Type: multipart/form-data
 
-{
-  "price": 69000,
-  "stock": 120,
-  "images": [
-    {
-      "imageUrl": "https://example.com/anh-new.jpg",
-      "isPrimary": true
-    }
-  ]
-}
+Form-data (khong doi anh):
+- price: 69000
+- stock: 120
+
+Form-data (thay the toan bo anh):
+- images: (file) 1-5 anh jpg/png/webp, <2MB/anh
+- price: 69000
+- stock: 120
 ```
 
 ### Admin - List books (filter)
