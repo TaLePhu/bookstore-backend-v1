@@ -157,7 +157,10 @@ export class BookRepository implements IBookRepository {
     return { data, total };
   }
 
-  async create(book: Partial<Book>, images: { imageUrl: string; isPrimary?: boolean }[]): Promise<Book> {
+  async create(
+    book: Partial<Book>,
+    images: { url: string; publicId?: string | null; isPrimary?: boolean }[]
+  ): Promise<Book> {
     const newBook = this.repository.create(book);
     const savedBook = await this.repository.save(newBook);
 
@@ -166,7 +169,8 @@ export class BookRepository implements IBookRepository {
       const bookImages = images.map((img) =>
         bookImageRepo.create({
           bookId: savedBook.id,
-          url: img.imageUrl,
+          url: img.url,
+          publicId: img.publicId || null,
           isPrimary: img.isPrimary || false,
         })
       );
@@ -176,7 +180,11 @@ export class BookRepository implements IBookRepository {
     return savedBook;
   }
 
-  async update(id: string, bookData: Partial<Book>, images?: { imageUrl: string; isPrimary?: boolean }[]): Promise<Book | null> {
+  async update(
+    id: string,
+    bookData: Partial<Book>,
+    images?: { url: string; publicId?: string | null; isPrimary?: boolean }[]
+  ): Promise<Book | null> {
     const existingBook = await this.repository.findOne({ where: { id } });
     if (!existingBook) return null;
 
@@ -192,7 +200,8 @@ export class BookRepository implements IBookRepository {
         const bookImages = images.map((img) =>
           bookImageRepo.create({
             bookId: updatedBook.id,
-            url: img.imageUrl,
+            url: img.url,
+            publicId: img.publicId || null,
             isPrimary: img.isPrimary || false,
           })
         );

@@ -1,6 +1,26 @@
-import { IsOptional, IsString, IsNumber, IsArray, Min, MaxLength, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
-import { BookImageDto } from './CreateBookDto';
+import { IsOptional, IsString, IsNumber, IsArray, Min, MaxLength } from 'class-validator';
+import { Transform } from 'class-transformer';
+
+function parseHighlights(value: unknown): string[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (Array.isArray(value)) return value as string[];
+  if (typeof value !== 'string') return value as string[];
+
+  const trimmed = value.trim();
+  if (trimmed === '') return [];
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) return parsed as string[];
+  } catch {
+    // Fall through to comma split
+  }
+
+  return trimmed
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
 
 export class UpdateBookDto {
   @IsOptional()
@@ -80,15 +100,10 @@ export class UpdateBookDto {
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
+  @Transform(({ value }) => parseHighlights(value))
   highlights?: string[];
 
   @IsOptional()
   @IsString()
   releaseDate?: string;
-
-  @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => BookImageDto)
-  images?: BookImageDto[];
 }

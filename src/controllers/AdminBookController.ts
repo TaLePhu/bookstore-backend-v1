@@ -103,7 +103,8 @@ export class AdminBookController {
 
   createBook = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const book = await this.bookService.createBook(req.body);
+      const files = req.files as Express.Multer.File[] | undefined;
+      const book = await this.bookService.createBook(req.body, files || []);
       res.status(201).json({
         success: true,
         message: 'Tạo sách mới thành công',
@@ -122,7 +123,8 @@ export class AdminBookController {
         throw new AppError('Lỗi: ID không đúng định dạng UUID.', 400);
       }
 
-      const book = await this.bookService.updateBook(id, req.body);
+      const files = req.files as Express.Multer.File[] | undefined;
+      const book = await this.bookService.updateBook(id, req.body, files);
       res.status(200).json({
         success: true,
         message: 'Cập nhật sách thành công',

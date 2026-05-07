@@ -17,6 +17,9 @@ export class BookImage {
   @Column('varchar', { length: 500 })
   url: string;
 
+  @Column('varchar', { length: 255, nullable: true, select: false })
+  publicId: string | null;
+
   @Column('boolean', { default: false })
   isPrimary: boolean;
 

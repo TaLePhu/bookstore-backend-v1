@@ -2,12 +2,15 @@ import { injectable, inject } from 'tsyringe';
 import { IBookRepository, BookListOptions } from '@repositories/interfaces/IBookRepository';
 import { ICategoryRepository } from '@repositories/interfaces/ICategoryRepository';
 import { TOKENS } from '@config/container';
-import { NotFoundError } from '@utils/errors';
+import { NotFoundError, ValidationError } from '@utils/errors';
 import { BookResponse } from '@dtos/book/BookResponseDto';
 import redisConfig from '@config/redis';
 import { CreateBookDto } from '@dtos/book/CreateBookDto';
 import { UpdateBookDto } from '@dtos/book/UpdateBookDto';
 import { Book } from '@entities/Book';
+import { BookImage } from '@entities/BookImage';
+import { AppDataSource } from '@config/data-source';
+import { uploadBookImages, deleteCloudinaryImages } from '@utils/cloudinary';
 
 @injectable()
 export class BookService {
@@ -65,7 +68,7 @@ export class BookService {
     return { data, total, page, limit };
   }
 
-  async createBook(dto: CreateBookDto): Promise<any> {
+  async createBook(dto: CreateBookDto, files: Express.Multer.File[]): Promise<any> {
     if (dto.categoryId) {
       const category = await this.categoryRepository.findById(dto.categoryId);
       if (!category) {
@@ -73,15 +76,55 @@ export class BookService {
       }
     }
 
-    const { images, releaseDate, ...rest } = dto;
+    if (!files || files.length === 0) {
+      throw new ValidationError('Hình ảnh sách không được để trống');
+    }
+
+    const { releaseDate, ...rest } = dto;
     const bookData: Partial<Book> = { ...rest };
     if (releaseDate) {
       bookData.releaseDate = new Date(releaseDate);
     }
-    return this.bookRepository.create(bookData, images);
+
+    const uploadedImages = await uploadBookImages(files);
+    const imagePayload = uploadedImages.map((img, index) => ({
+      url: img.url,
+      publicId: img.publicId,
+      isPrimary: index === 0,
+    }));
+
+    try {
+      return await AppDataSource.transaction(async (manager) => {
+        const bookRepo = manager.getRepository(Book);
+        const imageRepo = manager.getRepository(BookImage);
+
+        const newBook = bookRepo.create(bookData);
+        const savedBook = await bookRepo.save(newBook);
+
+        const bookImages = imagePayload.map((img) =>
+          imageRepo.create({
+            bookId: savedBook.id,
+            url: img.url,
+            publicId: img.publicId || null,
+            isPrimary: img.isPrimary || false,
+          })
+        );
+
+        await imageRepo.save(bookImages);
+
+        return savedBook;
+      });
+    } catch (error) {
+      try {
+        await deleteCloudinaryImages(uploadedImages.map((img) => img.publicId));
+      } catch (cleanupError) {
+        console.warn('Không thể dọn ảnh Cloudinary sau khi tạo sách thất bại', cleanupError);
+      }
+      throw error;
+    }
   }
 
-  async updateBook(id: string, dto: UpdateBookDto): Promise<any> {
+  async updateBook(id: string, dto: UpdateBookDto, files?: Express.Multer.File[]): Promise<any> {
     if (dto.categoryId) {
       const category = await this.categoryRepository.findById(dto.categoryId);
       if (!category) {
@@ -89,21 +132,91 @@ export class BookService {
       }
     }
 
-    const { images, releaseDate, ...rest } = dto;
+    const { releaseDate, ...rest } = dto;
     const bookData: Partial<Book> = { ...rest };
     if (releaseDate) {
       bookData.releaseDate = new Date(releaseDate);
     }
-    const updatedBook = await this.bookRepository.update(id, bookData, images);
 
-    if (!updatedBook) {
-      throw new NotFoundError('Sách không tồn tại');
+    if (!files || files.length === 0) {
+      const updatedBook = await this.bookRepository.update(id, bookData);
+
+      if (!updatedBook) {
+        throw new NotFoundError('Sách không tồn tại');
+      }
+
+      // Xóa cache detail sau khi update
+      await redisConfig.del(`book:detail:${id}`);
+
+      return updatedBook;
     }
 
-    // Xóa cache detail sau khi update
-    await redisConfig.del(`book:detail:${id}`);
+    const uploadedImages = await uploadBookImages(files);
+    const imagePayload = uploadedImages.map((img, index) => ({
+      url: img.url,
+      publicId: img.publicId,
+      isPrimary: index === 0,
+    }));
 
-    return updatedBook;
+    const existingImageRows = await AppDataSource.getRepository(BookImage).find({
+      where: { bookId: id },
+      select: ['publicId'],
+    });
+    const oldPublicIds = existingImageRows
+      .map((row) => row.publicId)
+      .filter((value): value is string => Boolean(value));
+
+    try {
+      const updatedBook = await AppDataSource.transaction(async (manager) => {
+        const bookRepo = manager.getRepository(Book);
+        const imageRepo = manager.getRepository(BookImage);
+
+        const existingBook = await bookRepo.findOne({ where: { id } });
+        if (!existingBook) return null;
+
+        bookRepo.merge(existingBook, bookData);
+        const savedBook = await bookRepo.save(existingBook);
+
+        await imageRepo.delete({ bookId: id });
+
+        const bookImages = imagePayload.map((img) =>
+          imageRepo.create({
+            bookId: savedBook.id,
+            url: img.url,
+            publicId: img.publicId || null,
+            isPrimary: img.isPrimary || false,
+          })
+        );
+
+        await imageRepo.save(bookImages);
+
+        return savedBook;
+      });
+
+      if (!updatedBook) {
+        await deleteCloudinaryImages(uploadedImages.map((img) => img.publicId));
+        throw new NotFoundError('Sách không tồn tại');
+      }
+
+      try {
+        await deleteCloudinaryImages(oldPublicIds);
+      } catch (cleanupError) {
+        console.warn('Không thể xóa ảnh Cloudinary cũ sau khi cập nhật sách', cleanupError);
+      }
+
+      // Xóa cache detail sau khi update
+      await redisConfig.del(`book:detail:${id}`);
+
+      return updatedBook;
+    } catch (error) {
+      try {
+        await deleteCloudinaryImages(uploadedImages.map((img) => img.publicId));
+      } catch (cleanupError) {
+        console.warn('Không thể dọn ảnh Cloudinary sau khi cập nhật thất bại', cleanupError);
+      }
+      throw error;
+    }
+
   }
 }
 

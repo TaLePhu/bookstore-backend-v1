@@ -1,13 +1,25 @@
-import { IsNotEmpty, IsString, IsNumber, IsOptional, IsArray, Min, MaxLength, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsNotEmpty, IsString, IsNumber, IsOptional, IsArray, Min, MaxLength } from 'class-validator';
+import { Transform } from 'class-transformer';
 
-export class BookImageDto {
-  @IsNotEmpty({ message: 'URL hình ảnh không được để trống' })
-  @IsString()
-  imageUrl: string;
+function parseHighlights(value: unknown): string[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (Array.isArray(value)) return value as string[];
+  if (typeof value !== 'string') return value as string[];
 
-  @IsOptional()
-  isPrimary?: boolean;
+  const trimmed = value.trim();
+  if (trimmed === '') return [];
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) return parsed as string[];
+  } catch {
+    // Fall through to comma split
+  }
+
+  return trimmed
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
 }
 
 export class CreateBookDto {
@@ -89,15 +101,10 @@ export class CreateBookDto {
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
+  @Transform(({ value }) => parseHighlights(value))
   highlights?: string[];
 
   @IsOptional()
   @IsString()
   releaseDate?: string;
-
-  @IsNotEmpty({ message: 'Hình ảnh sách không được để trống' })
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => BookImageDto)
-  images: BookImageDto[];
 }

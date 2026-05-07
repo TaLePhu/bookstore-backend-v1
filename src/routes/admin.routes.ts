@@ -14,6 +14,7 @@ import { UpdateCategoryDto } from '@dtos/category/UpdateCategoryDto';
 import { AdminBookController } from '@controllers/AdminBookController';
 import { CreateBookDto } from '@dtos/book/CreateBookDto';
 import { UpdateBookDto } from '@dtos/book/UpdateBookDto';
+import { uploadBookImages, requireBookImages } from '@middlewares/book-image-upload.middleware';
 
 const router = Router();
 const adminUserController = container.resolve(AdminUserController);
@@ -140,6 +141,8 @@ router.get('/books/:id', adminBookController.getBookById);
  */
 router.post(
   '/books',
+  uploadBookImages,
+  requireBookImages,
   validateDto(CreateBookDto),
   adminBookController.createBook,
 );
@@ -150,6 +153,7 @@ router.post(
  */
 router.put(
   '/books/:id',
+  uploadBookImages,
   validateDto(UpdateBookDto),
   adminBookController.updateBook,
 );

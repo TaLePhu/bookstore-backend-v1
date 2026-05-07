@@ -56,6 +56,14 @@ export interface EnvConfig {
     user: string;
     pass: string;
   };
+
+  // Cloudinary
+  cloudinary: {
+    cloudName: string;
+    apiKey: string;
+    apiSecret: string;
+    folder?: string;
+  };
 }
 
 function parseEnv(): EnvConfig {
@@ -109,6 +117,13 @@ function parseEnv(): EnvConfig {
       port: parseInt(process.env['SMTP_PORT'] || '587', 10),
       user: process.env['SMTP_USER'] || '',
       pass: process.env['SMTP_PASS'] || '',
+    },
+
+    cloudinary: {
+      cloudName: throwIfEmpty(process.env['CLOUDINARY_CLOUD_NAME'], 'CLOUDINARY_CLOUD_NAME'),
+      apiKey: throwIfEmpty(process.env['CLOUDINARY_API_KEY'], 'CLOUDINARY_API_KEY'),
+      apiSecret: throwIfEmpty(process.env['CLOUDINARY_API_SECRET'], 'CLOUDINARY_API_SECRET'),
+      folder: process.env['CLOUDINARY_FOLDER'],
     },
   };
 }
