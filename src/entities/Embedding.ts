@@ -16,7 +16,7 @@ export class Embedding {
   @PrimaryColumn('uuid')
   id: string = uuidv4();
 
-  @Column('vector', { length: 1536, nullable: true })
+  @Column('vector', { length: 3072, nullable: true })
   vector: string | null;
 
   @CreateDateColumn()
