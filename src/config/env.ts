@@ -13,6 +13,7 @@ export interface EnvConfig {
 
   // Database
   db: {
+    url?: string;
     host: string;
     port: number;
     username: string;
@@ -20,6 +21,7 @@ export interface EnvConfig {
     database: string;
     synchronize: boolean;
     logging: boolean;
+    ssl: boolean;
   };
 
   // JWT
@@ -88,6 +90,7 @@ function parseEnv(): EnvConfig {
     logLevel: process.env['LOG_LEVEL'] || 'debug',
 
     db: {
+      url: process.env['DATABASE_URL'],
       host: throwIfEmpty(process.env['DB_HOST'], 'DB_HOST'),
       port: parseInt(process.env['DB_PORT'] || '5432', 10),
       username: throwIfEmpty(process.env['DB_USERNAME'], 'DB_USERNAME'),
@@ -95,6 +98,7 @@ function parseEnv(): EnvConfig {
       database: throwIfEmpty(process.env['DB_DATABASE'], 'DB_DATABASE'),
       synchronize: process.env['DB_SYNCHRONIZE'] === 'true',
       logging: process.env['DB_LOGGING'] === 'true',
+      ssl: process.env['DB_SSL'] === 'true',
     },
 
     jwt: {

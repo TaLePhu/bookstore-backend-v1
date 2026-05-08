@@ -44,11 +44,13 @@ const env = getEnv();
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
+  url: env.db.url,
   host: env.db.host,
   port: env.db.port,
   username: env.db.username,
   password: env.db.password,
   database: env.db.database,
+  ssl: env.db.ssl ? { rejectUnauthorized: false } : false,
   synchronize: env.db.synchronize,
   logging: env.db.logging,
   entities: [
