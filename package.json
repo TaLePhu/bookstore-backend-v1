@@ -15,7 +15,9 @@
     "migration:run": "node -r ts-node/register -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:run -d src/config/data-source.ts",
     "migration:revert": "node -r ts-node/register -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:revert -d src/config/data-source.ts",
     "db:seed": "ts-node -r tsconfig-paths/register src/seeds/seed.ts",
-    "db:reset-seed": "ts-node -r tsconfig-paths/register src/seeds/reset-and-seed.ts"
+    "db:reset-seed": "ts-node -r tsconfig-paths/register src/seeds/reset-and-seed.ts",
+    "db:backfill-embeddings": "ts-node -r tsconfig-paths/register src/seeds/backfill-embeddings.ts",
+    "db:list-gemini-models": "ts-node -r tsconfig-paths/register src/seeds/list-gemini-models.ts"
   },
   "keywords": [
     "bookstore",

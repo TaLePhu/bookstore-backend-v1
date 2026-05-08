@@ -11,13 +11,38 @@ import { Book } from '@entities/Book';
 import { BookImage } from '@entities/BookImage';
 import { AppDataSource } from '@config/data-source';
 import { uploadBookImages, deleteCloudinaryImages } from '@utils/cloudinary';
+import { EmbeddingSearchService } from '@services/EmbeddingSearchService';
+import { EmbeddingProviderService } from '@services/EmbeddingProviderService';
 
 @injectable()
 export class BookService {
   constructor(
     @inject(TOKENS.BOOK_REPOSITORY) private bookRepository: IBookRepository,
-    @inject(TOKENS.CATEGORY_REPOSITORY) private categoryRepository: ICategoryRepository
+    @inject(TOKENS.CATEGORY_REPOSITORY) private categoryRepository: ICategoryRepository,
+    private embeddingSearchService: EmbeddingSearchService,
+    private embeddingProviderService: EmbeddingProviderService
   ) {}
+
+  private async getCategoryName(categoryId?: string): Promise<string | null> {
+    if (!categoryId) return null;
+    const category = await this.categoryRepository.findById(categoryId);
+    return category?.name ?? null;
+  }
+
+  private async updateEmbeddingForBook(book: Book, categoryName?: string | null): Promise<void> {
+    try {
+      const embeddingText = this.embeddingProviderService.buildBookEmbeddingText({
+        title: book.title,
+        author: book.author,
+        description: book.description,
+        categoryName: categoryName ?? undefined,
+      });
+      const vector = await this.embeddingProviderService.embedText(embeddingText);
+      await this.embeddingSearchService.storeEmbedding(book.id, vector);
+    } catch (error) {
+      console.warn('Update book embedding failed:', error);
+    }
+  }
 
   async getAllBooks(options: BookListOptions): Promise<{ data: BookResponse[]; total: number; page: number; limit: number }> {
     const { page, limit, sort, categoryId, status } = options;
@@ -68,12 +93,61 @@ export class BookService {
     return { data, total, page, limit };
   }
 
+  async semanticSearchBooks(
+    query: string,
+    page: number = 1,
+    limit: number = 10,
+    similarityThreshold: number = 0.5
+  ): Promise<{ data: BookResponse[]; total: number; page: number; limit: number }> {
+    if (!query || query.trim() === '') {
+      return { data: [], total: 0, page, limit };
+    }
+
+    const normalizedQuery = query.trim();
+    const offset = (page - 1) * limit;
+
+    try {
+      const queryText = this.embeddingProviderService.buildQueryText(normalizedQuery);
+      const vector = await this.embeddingProviderService.embedText(queryText);
+      const { items, total } = await this.embeddingSearchService.searchSimilarPaged(
+        vector,
+        offset,
+        limit,
+        similarityThreshold
+      );
+
+      if (items.length === 0) {
+        return { data: [], total, page, limit };
+      }
+
+      const keywordIds = await this.bookRepository.searchKeywordIds(normalizedQuery, 50);
+      const keywordSet = new Set(keywordIds);
+
+      const rankedIds = items
+        .map((item) => ({
+          bookId: item.bookId,
+          score: item.similarity + (keywordSet.has(item.bookId) ? 0.05 : 0),
+        }))
+        .sort((a, b) => b.score - a.score)
+        .map((item) => item.bookId);
+
+      const data = await this.bookRepository.findByIdsPreserveOrder(rankedIds);
+      return { data, total, page, limit };
+    } catch (error) {
+      console.warn('Semantic search failed, fallback to keyword search:', error);
+      const { data, total } = await this.bookRepository.searchKeywordExtended(normalizedQuery, page, limit);
+      return { data, total, page, limit };
+    }
+  }
+
   async createBook(dto: CreateBookDto, files: Express.Multer.File[]): Promise<any> {
+    let categoryName: string | null = null;
     if (dto.categoryId) {
       const category = await this.categoryRepository.findById(dto.categoryId);
       if (!category) {
         throw new NotFoundError('Danh mục không tồn tại');
       }
+      categoryName = category.name;
     }
 
     if (!files || files.length === 0) {
@@ -94,7 +168,7 @@ export class BookService {
     }));
 
     try {
-      return await AppDataSource.transaction(async (manager) => {
+      const savedBook = await AppDataSource.transaction(async (manager) => {
         const bookRepo = manager.getRepository(Book);
         const imageRepo = manager.getRepository(BookImage);
 
@@ -114,6 +188,8 @@ export class BookService {
 
         return savedBook;
       });
+      await this.updateEmbeddingForBook(savedBook, categoryName);
+      return savedBook;
     } catch (error) {
       try {
         await deleteCloudinaryImages(uploadedImages.map((img) => img.publicId));
@@ -125,11 +201,13 @@ export class BookService {
   }
 
   async updateBook(id: string, dto: UpdateBookDto, files?: Express.Multer.File[]): Promise<any> {
+    let categoryName: string | null = null;
     if (dto.categoryId) {
       const category = await this.categoryRepository.findById(dto.categoryId);
       if (!category) {
         throw new NotFoundError('Danh mục không tồn tại');
       }
+      categoryName = category.name;
     }
 
     const { releaseDate, ...rest } = dto;
@@ -148,6 +226,7 @@ export class BookService {
       // Xóa cache detail sau khi update
       await redisConfig.del(`book:detail:${id}`);
 
+      await this.updateEmbeddingForBook(updatedBook, categoryName ?? await this.getCategoryName(updatedBook.categoryId));
       return updatedBook;
     }
 
@@ -207,6 +286,7 @@ export class BookService {
       // Xóa cache detail sau khi update
       await redisConfig.del(`book:detail:${id}`);
 
+      await this.updateEmbeddingForBook(updatedBook, categoryName ?? await this.getCategoryName(updatedBook.categoryId));
       return updatedBook;
     } catch (error) {
       try {

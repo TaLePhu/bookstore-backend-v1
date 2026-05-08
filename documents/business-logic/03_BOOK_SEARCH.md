@@ -26,6 +26,14 @@ Feature Book quản lý danh sách sách, xem chi tiết sách, tìm kiếm sác
 3. Nếu query hợp lệ thì hệ thống gọi repository search để tìm dữ liệu phù hợp.
 4. Kết quả trả về vẫn theo cùng cấu trúc data + pagination.
 
+### 3.5 Tìm kiếm ngữ nghĩa (semantic search)
+1. Client gọi `GET /books/semantic-search` với query `q`, `page`, `limit`, `threshold`.
+2. Nếu `q` rỗng thì trả về danh sách rỗng, `total=0`.
+3. Hệ thống sinh embedding cho `q` bằng Gemini, chạy vector search với pgvector.
+4. Kết quả semantic sẽ được rerank bằng keyword match (title/author/description/category) với top 50 keyword candidates.
+5. Nếu Gemini lỗi, fallback sang keyword search (không fail request).
+6. Trả về `data` và `pagination` với `total` là count chính xác theo vector search (khi semantic thành công).
+
 ### 3.4 Lấy danh sách sách có filter/sort
 1. Client gọi `GET /books` kèm `page`, `limit`, và có thể có `sort`, `category_id`.
 2. Controller chuẩn hoá phân trang như mục 3.1.
@@ -50,6 +58,8 @@ Feature Book quản lý danh sách sách, xem chi tiết sách, tìm kiếm sác
 - `category_id` sai định dạng trả 400; hợp lệ nhưng không tồn tại trả 404.
 - `sort=bestseller` chỉ tính đơn `COMPLETED` (all-time).
 - `release_date` được phép `NULL` trong DB để tương thích dữ liệu cũ; dữ liệu `NULL` không được ưu tiên trong API latest.
+- `GET /books/semantic-search` hỗ trợ `threshold` trong khoảng [0,1].
+- Nếu Gemini lỗi, hệ thống fallback keyword search.
 
 ## 5. Side effect và trạng thái
 - Feature này không thay đổi dữ liệu.
@@ -69,6 +79,8 @@ Feature Book quản lý danh sách sách, xem chi tiết sách, tìm kiếm sác
 - [src/services/BookService.ts](../../src/services/BookService.ts)
 - [src/controllers/BookController.ts](../../src/controllers/BookController.ts)
 - [src/routes/book.routes.ts](../../src/routes/book.routes.ts)
+- [src/services/EmbeddingSearchService.ts](../../src/services/EmbeddingSearchService.ts)
+- [src/services/EmbeddingProviderService.ts](../../src/services/EmbeddingProviderService.ts)
 - [src/repositories/interfaces/IBookRepository.ts](../../src/repositories/interfaces/IBookRepository.ts)
 - [src/repositories/typeorm/BookRepository.ts](../../src/repositories/typeorm/BookRepository.ts)
 - [src/repositories/interfaces/ICategoryRepository.ts](../../src/repositories/interfaces/ICategoryRepository.ts)

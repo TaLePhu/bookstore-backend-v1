@@ -109,4 +109,31 @@ export class BookController {
       next(error);
     }
   };
+
+  semanticSearchBooks = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const query = req.query.q as string || '';
+      const { page, limit } = getSafePagination(req.query.page, req.query.limit);
+
+      const rawThreshold = typeof req.query.threshold === 'string' ? req.query.threshold.trim() : '';
+      const parsedThreshold = rawThreshold === '' ? 0.5 : parseFloat(rawThreshold);
+      const threshold = Number.isFinite(parsedThreshold)
+        ? Math.min(1, Math.max(0, parsedThreshold))
+        : 0.5;
+
+      const result = await this.bookService.semanticSearchBooks(query, page, limit, threshold);
+
+      res.status(200).json({
+        success: true,
+        data: result.data,
+        pagination: {
+          total: result.total,
+          page: result.page,
+          limit: result.limit
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 }

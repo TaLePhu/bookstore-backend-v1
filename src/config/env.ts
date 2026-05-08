@@ -64,6 +64,13 @@ export interface EnvConfig {
     apiSecret: string;
     folder?: string;
   };
+
+  // Gemini
+  gemini: {
+    apiKey: string;
+    embeddingModel: string;
+    apiVersion: string;
+  };
 }
 
 function parseEnv(): EnvConfig {
@@ -124,6 +131,12 @@ function parseEnv(): EnvConfig {
       apiKey: throwIfEmpty(process.env['CLOUDINARY_API_KEY'], 'CLOUDINARY_API_KEY'),
       apiSecret: throwIfEmpty(process.env['CLOUDINARY_API_SECRET'], 'CLOUDINARY_API_SECRET'),
       folder: process.env['CLOUDINARY_FOLDER'],
+    },
+
+    gemini: {
+      apiKey: process.env['GEMINI_API_KEY'] || '',
+      embeddingModel: process.env['GEMINI_EMBEDDING_MODEL'] || 'text-embedding-004',
+      apiVersion: process.env['GEMINI_API_VERSION'] || 'v1',
     },
   };
 }

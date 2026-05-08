@@ -113,6 +113,65 @@ export class BookRepository implements IBookRepository {
     return { data, total };
   }
 
+  async searchKeywordExtended(
+    query: string,
+    page: number,
+    limit: number
+  ): Promise<{ data: BookResponse[]; total: number }> {
+    const skip = (page - 1) * limit;
+    const qb = this.repository
+      .createQueryBuilder('book')
+      .leftJoinAndSelect('book.category', 'category')
+      .where(
+        `book.title ILIKE :query
+        OR book.author ILIKE :query
+        OR book.description ILIKE :query
+        OR category.name ILIKE :query`,
+        { query: `%${query}%` }
+      )
+      .orderBy('book.createdAt', 'DESC')
+      .skip(skip)
+      .take(limit);
+
+    const [books, total] = await qb.getManyAndCount();
+    const data = await this.mapBooksToResponse(books);
+
+    return { data, total };
+  }
+
+  async searchKeywordIds(query: string, limit: number): Promise<string[]> {
+    const rows = await this.repository
+      .createQueryBuilder('book')
+      .leftJoin('book.category', 'category')
+      .select('book.id', 'id')
+      .where(
+        `book.title ILIKE :query
+        OR book.author ILIKE :query
+        OR book.description ILIKE :query
+        OR category.name ILIKE :query`,
+        { query: `%${query}%` }
+      )
+      .orderBy('book.createdAt', 'DESC')
+      .limit(limit)
+      .getRawMany<{ id: string }>();
+
+    return rows.map((row) => row.id);
+  }
+
+  async findByIdsPreserveOrder(ids: string[]): Promise<BookResponse[]> {
+    if (ids.length === 0) return [];
+
+    const books = await this.repository.find({
+      where: { id: In(ids) },
+      relations: ['category'],
+    });
+
+    const orderMap = new Map(ids.map((id, index) => [id, index]));
+    const sortedBooks = books.sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
+
+    return this.mapBooksToResponse(sortedBooks);
+  }
+
   private async findBestSellerBooksAllTime(page: number, limit: number, categoryId?: string): Promise<{ data: BookResponse[]; total: number }> {
     const skip = (page - 1) * limit;
     const baseQb = this.repository

@@ -1,9 +1,9 @@
-import { injectable } from 'tsyringe';
+import { singleton } from 'tsyringe';
 import { Repository } from 'typeorm';
 import { AppDataSource } from '@config/data-source';
 import { Embedding } from '@entities/Embedding';
 
-@injectable()
+@singleton()
 export class EmbeddingSearchService {
   private repository: Repository<Embedding>;
 
@@ -22,10 +22,19 @@ export class EmbeddingSearchService {
     limit: number = 10,
     similarityThreshold: number = 0.5
   ): Promise<Array<{ bookId: string; similarity: number }>> {
+    const { items } = await this.searchSimilarPaged(vector, 0, limit, similarityThreshold);
+    return items;
+  }
+
+  async searchSimilarPaged(
+    vector: number[],
+    offset: number,
+    limit: number,
+    similarityThreshold: number = 0.5
+  ): Promise<{ items: Array<{ bookId: string; similarity: number }>; total: number }> {
     try {
       const vectorStr = JSON.stringify(vector);
 
-      // Use pgvector similarity search
       const query = `
         SELECT 
           e.book_id,
@@ -33,15 +42,28 @@ export class EmbeddingSearchService {
         FROM embeddings e
         WHERE (1 - (e.vector <=> $1::vector)) >= $2
         ORDER BY e.vector <=> $1::vector
-        LIMIT $3
+        OFFSET $3
+        LIMIT $4
       `;
 
-      const results = await this.repository.query(query, [vectorStr, similarityThreshold, limit]);
+      const countQuery = `
+        SELECT COUNT(1) as total
+        FROM embeddings e
+        WHERE (1 - (e.vector <=> $1::vector)) >= $2
+      `;
 
-      return results.map((row: any) => ({
+      const [results, countRows] = await Promise.all([
+        this.repository.query(query, [vectorStr, similarityThreshold, offset, limit]),
+        this.repository.query(countQuery, [vectorStr, similarityThreshold]),
+      ]);
+
+      const total = Number(countRows?.[0]?.total || 0);
+      const items = (results as Array<{ book_id: string; similarity: string }>).map((row) => ({
         bookId: row.book_id,
         similarity: parseFloat(row.similarity),
       }));
+
+      return { items, total };
     } catch (error) {
       console.error('Vector search error:', error);
       throw new Error('Vector search failed');
