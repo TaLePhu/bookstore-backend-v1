@@ -18,6 +18,7 @@ import { Embedding } from '@entities/Embedding';
 import { UserBehavior } from '@entities/UserBehavior';
 import { RefreshToken } from '@entities/RefreshToken';
 import { UserAdvance } from '@entities/UserAdvance';
+import { OrderStatusLog } from '@entities/OrderStatusLog';
 
 // Migrations
 import { InitialMigration1710000000000 } from '../migrations/1710000000000-InitialMigration';
@@ -35,6 +36,7 @@ import { AddRefreshTokenDeviceId1777000000000 } from '@/migrations/1777000000000
 import { AddOrderCodeToOrder1777710182872 } from '../migrations/1777710182872-AddOrderCodeToOrder';
 import { AddSoldCountToBook1777881429452 } from '../migrations/1777881429452-AddSoldCountToBook';
 import { AddBookImagePublicId1778000000000 } from '../migrations/1778000000000-AddBookImagePublicId';
+import { CreateOrderStatusLogs1779000000000 } from '../migrations/1779000000000-CreateOrderStatusLogs';
 
 const env = getEnv();
 
@@ -63,6 +65,7 @@ export const AppDataSource = new DataSource({
     UserBehavior,
     UserAdvance,
     RefreshToken,
+    OrderStatusLog,
   ],
   migrations: [
     InitialMigration1710000000000,
@@ -80,6 +83,7 @@ export const AppDataSource = new DataSource({
     AddOrderCodeToOrder1777710182872,
     AddSoldCountToBook1777881429452,
     AddBookImagePublicId1778000000000,
+    CreateOrderStatusLogs1779000000000,
   ],
   subscribers: [],
   cache: false,

@@ -22,6 +22,7 @@ import { User } from './User';
 import { Address } from './Address';
 import { OrderItem } from './OrderItem';
 import { Payment } from './Payment';
+import { OrderStatusLog } from './OrderStatusLog';
 
 @Entity('orders')
 export class Order {
@@ -69,4 +70,7 @@ export class Order {
 
   @OneToMany(() => Payment, (payment) => payment.order, { cascade: true })
   payments: Payment[];
+
+  @OneToMany(() => OrderStatusLog, (log) => log.order, { cascade: true })
+  statusLogs: OrderStatusLog[];
 }
