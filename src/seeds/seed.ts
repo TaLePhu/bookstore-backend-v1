@@ -11,6 +11,7 @@ import { CartItem } from '../entities/CartItem';
 import { Order, OrderStatus } from '../entities/Order';
 import { OrderItem } from '../entities/OrderItem';
 import { Payment, PaymentMethod, PaymentStatus } from '../entities/Payment';
+import { OrderStatusLog } from '../entities/OrderStatusLog';
 import { UserBehavior, BehaviorType } from '../entities/UserBehavior';
 import * as bcrypt from 'bcryptjs';
 
@@ -38,6 +39,20 @@ export async function runSeed(options: SeedOptions = {}) {
     await queryRunner.connect();
 
     console.log('🗑️ Xóa dữ liệu rác cũ...');
+    await queryRunner.query(`TRUNCATE TABLE order_status_logs CASCADE`);
+    await queryRunner.query(`TRUNCATE TABLE order_items CASCADE`);
+    await queryRunner.query(`TRUNCATE TABLE payments CASCADE`);
+    await queryRunner.query(`TRUNCATE TABLE cart_items CASCADE`);
+    await queryRunner.query(`TRUNCATE TABLE carts CASCADE`);
+    await queryRunner.query(`TRUNCATE TABLE reviews CASCADE`);
+    await queryRunner.query(`TRUNCATE TABLE book_images CASCADE`);
+    await queryRunner.query(`TRUNCATE TABLE embeddings CASCADE`);
+    await queryRunner.query(`TRUNCATE TABLE refresh_tokens CASCADE`);
+    await queryRunner.query(`TRUNCATE TABLE orders CASCADE`);
+    await queryRunner.query(`TRUNCATE TABLE books CASCADE`);
+    await queryRunner.query(`TRUNCATE TABLE addresses CASCADE`);
+    await queryRunner.query(`TRUNCATE TABLE user_advances CASCADE`);
+    await queryRunner.query(`TRUNCATE TABLE user_behaviors CASCADE`);
     await queryRunner.query(`TRUNCATE TABLE categories CASCADE`);
     await queryRunner.query(`TRUNCATE TABLE users CASCADE`);
     await queryRunner.release();
@@ -56,8 +71,13 @@ export async function runSeed(options: SeedOptions = {}) {
     user.passwordHash = passwordHash;
     user.role = i === 1 ? Role.ADMIN : Role.CUSTOMER;
     user.isVerified = true;
+    user.isLocked = false;
 
     const userAdvance = new UserAdvance();
+    userAdvance.user = user;
+    userAdvance.userId = user.id;
+    userAdvance.avatar = `https://i.pravatar.cc/150?img=${i}`;
+    userAdvance.dob = new Date(Date.UTC(1995, i % 12, i));
     userAdvance.phone = `090123456${i}`;
     userAdvance.gender = i % 2 === 0 ? 'Nữ' : 'Nam';
     user.userAdvance = userAdvance;
@@ -76,8 +96,14 @@ export async function runSeed(options: SeedOptions = {}) {
     addr.receiverName = `Người nhận ${i + 1}`;
     addr.phone = `090123456${i}`;
     addr.addressLine = `${i + 1}/10 Nguyễn Trãi`;
-    addr.country = 'Vietnam';
+    addr.country = 'Việt Nam';
+    addr.provinceCode = '79';
     addr.provinceName = 'Hồ Chí Minh';
+    addr.districtCode = `7${i}`;
+    addr.districtName = `Quận ${i + 1}`;
+    addr.wardCode = `00${i}`;
+    addr.wardName = `Phường ${i + 1}`;
+    addr.isDefault = true;
     addresses.push(await addressRepo.save(addr));
   }
 
@@ -104,8 +130,10 @@ export async function runSeed(options: SeedOptions = {}) {
     book.description = `Đây là nội dung tóm tắt cực hay của quyển sách số ${i}...`;
     book.price = (Math.floor(Math.random() * 10) + 5) * 10000;
     book.stock = 100;
+    book.soldCount = Math.floor(Math.random() * 50);
     book.isbn = `978-00${i.toString().padStart(6, '0')}`;
     book.category = categories[i % 5];
+    book.categoryId = categories[i % 5].id;
     
     // New Book Details
     book.translator = `Người Dịch ${i}`;
@@ -132,13 +160,23 @@ export async function runSeed(options: SeedOptions = {}) {
   // 5. Tạo BookImage
   console.log('🖼️ Tạo BookImages...');
   const bookImageRepo = AppDataSource.getRepository(BookImage);
-  for (let i = 0; i < 10; i++) {
-    const img1 = new BookImage();
-    img1.book = books[i];
-    // Main image
-    img1.url = 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?q=80&w=800';
-    img1.isPrimary = true;
-    await bookImageRepo.save(img1);
+  const imageUrls = [
+    'https://images.unsplash.com/photo-1544947950-fa07a98d237f?q=80&w=800',
+    'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?q=80&w=800',
+    'https://images.unsplash.com/photo-1472289065668-ce650ac443d2?q=80&w=800',
+    'https://images.unsplash.com/photo-1463320898484-cdee8141c787?q=80&w=800',
+    'https://images.unsplash.com/photo-1455885666463-2b1f8f4c0e5b?q=80&w=800'
+  ];
+  for (let i = 0; i < books.length; i++) {
+    for (let j = 0; j < 4; j++) {
+      const img = new BookImage();
+      img.book = books[i];
+      img.bookId = books[i].id;
+      img.url = imageUrls[(i + j) % imageUrls.length];
+      img.isPrimary = j === 0;
+      img.publicId = `book-${i + 1}-img-${j + 1}`;
+      await bookImageRepo.save(img);
+    }
   }
 
   // 6. Tạo Review
@@ -147,7 +185,9 @@ export async function runSeed(options: SeedOptions = {}) {
   for (let i = 0; i < 5; i++) {
     const review = new Review();
     review.user = users[i];
+    review.userId = users[i].id;
     review.book = books[i % 5];
+    review.bookId = books[i % 5].id;
     review.rating = 4 + (i % 2);
     review.comment = 'Sách rất hay, đóng gói cẩn thận!';
     await reviewRepo.save(review);
@@ -160,11 +200,14 @@ export async function runSeed(options: SeedOptions = {}) {
   for (let i = 0; i < 5; i++) {
     const cart = new Cart();
     cart.user = users[i];
+    cart.userId = users[i].id;
     const savedCart = await cartRepo.save(cart);
 
     const cItem = new CartItem();
     cItem.cart = savedCart;
+    cItem.cartId = savedCart.id;
     cItem.book = books[i % 5];
+    cItem.bookId = books[i % 5].id;
     cItem.quantity = i + 1;
     await cartItemRepo.save(cItem);
   }
@@ -174,18 +217,27 @@ export async function runSeed(options: SeedOptions = {}) {
   const orderRepo = AppDataSource.getRepository(Order);
   const orderItemRepo = AppDataSource.getRepository(OrderItem);
   const paymentRepo = AppDataSource.getRepository(Payment);
+  const savedOrders: Order[] = [];
 
   for (let i = 0; i < 5; i++) {
     const order = new Order();
     order.user = users[i];
+    order.userId = users[i].id;
     order.totalAmount = books[i % 5].price * 2;
+    order.shippingFee = 15000;
+    order.note = i % 2 === 0 ? 'Giao giờ hành chính' : 'Liên hệ trước khi giao';
     order.status = OrderStatus.PENDING;
     order.address = addresses[i];
+    order.addressId = addresses[i].id;
+    order.orderCode = `ORD-2026-${(i + 1).toString().padStart(4, '0')}`;
     const savedOrder = await orderRepo.save(order);
+    savedOrders.push(savedOrder);
 
     const oItem = new OrderItem();
     oItem.order = savedOrder;
+    oItem.orderId = savedOrder.id;
     oItem.book = books[i % 5];
+    oItem.bookId = books[i % 5].id;
     oItem.quantity = 2;
     oItem.price = books[i % 5].price;
     oItem.subTotal = Number(oItem.price) * oItem.quantity;
@@ -193,19 +245,37 @@ export async function runSeed(options: SeedOptions = {}) {
 
     const payment = new Payment();
     payment.order = savedOrder;
+    payment.orderId = savedOrder.id;
     payment.amount = savedOrder.totalAmount;
-    payment.method = PaymentMethod.CREDIT_CARD;
+    payment.method = i % 2 === 0 ? PaymentMethod.COD : PaymentMethod.CREDIT_CARD;
     payment.status = PaymentStatus.PENDING;
     await paymentRepo.save(payment);
   }
 
-  // 9. Tạo UserBehavior
+  // 9. Tạo OrderStatusLog
+  console.log('🧾 Tạo OrderStatusLogs...');
+  const statusLogRepo = AppDataSource.getRepository(OrderStatusLog);
+  for (let i = 0; i < 5; i++) {
+    const log = new OrderStatusLog();
+    log.order = savedOrders[i];
+    log.orderId = savedOrders[i].id;
+    log.fromStatus = OrderStatus.PENDING;
+    log.toStatus = OrderStatus.PROCESSING;
+    log.note = 'Xác nhận đơn hàng';
+    log.changedByUser = users[0];
+    log.changedBy = users[0].id;
+    await statusLogRepo.save(log);
+  }
+
+  // 10. Tạo UserBehavior
   console.log('🔍 Tạo Behaviors...');
   const behaviorRepo = AppDataSource.getRepository(UserBehavior);
   for (let i = 0; i < 5; i++) {
     const bhv = new UserBehavior();
     bhv.user = users[i];
+    bhv.userId = users[i].id;
     bhv.book = books[i % 5];
+    bhv.bookId = books[i % 5].id;
     bhv.behaviorType = BehaviorType.VIEW;
     await behaviorRepo.save(bhv);
   }
