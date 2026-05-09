@@ -226,7 +226,7 @@ export async function runSeed(options: SeedOptions = {}) {
     order.totalAmount = books[i % 5].price * 2;
     order.shippingFee = 15000;
     order.note = i % 2 === 0 ? 'Giao giờ hành chính' : 'Liên hệ trước khi giao';
-    order.status = OrderStatus.PENDING;
+    order.status = i < 3 ? OrderStatus.COMPLETED : OrderStatus.PENDING;
     order.address = addresses[i];
     order.addressId = addresses[i].id;
     order.orderCode = `ORD-2026-${(i + 1).toString().padStart(4, '0')}`;
@@ -260,7 +260,7 @@ export async function runSeed(options: SeedOptions = {}) {
     log.order = savedOrders[i];
     log.orderId = savedOrders[i].id;
     log.fromStatus = OrderStatus.PENDING;
-    log.toStatus = OrderStatus.PROCESSING;
+    log.toStatus = savedOrders[i].status === OrderStatus.COMPLETED ? OrderStatus.COMPLETED : OrderStatus.PROCESSING;
     log.note = 'Xác nhận đơn hàng';
     log.changedByUser = users[0];
     log.changedBy = users[0].id;

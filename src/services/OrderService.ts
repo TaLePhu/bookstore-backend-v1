@@ -7,12 +7,14 @@ import { CartItem } from '@entities/CartItem';
 import { Address } from '@entities/Address';
 import { Payment, PaymentMethod, PaymentStatus } from '@entities/Payment';
 import { Cart } from '@entities/Cart';
+import { User, Role } from '@entities/User';
 import { IOrderRepository } from '@repositories/interfaces/IOrderRepository';
 import { ICartRepository } from '@repositories/interfaces/ICartRepository';
 import { CreateOrderDto } from '@dtos/order/CreateOrderDto';
 import { AppError, NotFoundError } from '@utils/errors';
 import { EntityManager } from 'typeorm';
 import { TOKENS } from '@config/container';
+import { emailQueue } from '@config/queue';
 
 @injectable()
 export class OrderService {
@@ -27,6 +29,8 @@ export class OrderService {
    * Toàn bộ write-operations chạy trong 1 Transaction.
    */
   async createOrder(userId: string, dto: CreateOrderDto): Promise<Order> {
+    const checkoutUser = await AppDataSource.getRepository(User).findOne({ where: { id: userId } });
+
     // 1. Lấy Cart + CartItems (eager load book)
     const cart = await this.cartRepository.findActiveByUserId(userId);
 
@@ -60,11 +64,8 @@ export class OrderService {
         !dto.phone ||
         !dto.receiverName ||
         !dto.country ||
-        !dto.provinceCode ||
         !dto.provinceName ||
-        !dto.districtCode ||
         !dto.districtName ||
-        !dto.wardCode ||
         !dto.wardName
       ) {
         throw new AppError('Vui lòng cung cấp cả addressId hoặc thông tin địa chỉ đầy đủ (bao gồm: quốc gia, tỉnh/thành, quận/huyện, phường/xã, địa chỉ chi tiết, số điện thoại, người nhận)', 400);
@@ -197,7 +198,360 @@ export class OrderService {
 
     // 8. Reload Order kèm relations để trả về cho client
     const result = await this.orderRepository.findByIdAndUserId(savedOrder.id, userId);
+    await this.sendOrderConfirmationEmail(result!, dto.email || checkoutUser?.email);
     return result!;
+  }
+
+  async createGuestOrder(dto: CreateOrderDto): Promise<Order> {
+    if (!dto.guestItems || dto.guestItems.length === 0) {
+      throw new AppError('Vui lòng chọn ít nhất một sản phẩm để thanh toán', 400);
+    }
+
+    if (
+      !dto.addressLine ||
+      !dto.phone ||
+      !dto.receiverName ||
+      !dto.country ||
+      !dto.provinceName ||
+      !dto.districtName ||
+      !dto.wardName
+    ) {
+      throw new AppError('Vui lòng cung cấp đầy đủ thông tin giao hàng', 400);
+    }
+
+    const savedOrder = await AppDataSource.transaction(async (manager: EntityManager) => {
+      const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const guestUser = manager.create(User, {
+        userName: `guest_${suffix}`,
+        fullName: dto.receiverName,
+        email: `guest-${suffix}@guest.local`,
+        passwordHash: '',
+        role: Role.GUEST,
+        isVerified: false,
+        isLocked: false,
+      });
+      const savedGuest = await manager.save(User, guestUser);
+
+      const address = manager.create(Address, {
+        userId: savedGuest.id,
+        receiverName: dto.receiverName,
+        phone: dto.phone,
+        addressLine: dto.addressLine,
+        country: dto.country ?? 'Việt Nam',
+        provinceCode: dto.provinceCode,
+        provinceName: dto.provinceName,
+        districtCode: dto.districtCode,
+        districtName: dto.districtName,
+        wardCode: dto.wardCode,
+        wardName: dto.wardName,
+        isDefault: true,
+      });
+      const savedAddress = await manager.save(Address, address);
+
+      const itemsData: Array<{ bookId: string; quantity: number; price: number; subTotal: number }> = [];
+      for (const item of dto.guestItems!) {
+        const lockedBook = await manager.findOne(Book, {
+          where: { id: item.bookId },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (!lockedBook) {
+          throw new NotFoundError('Sách trong giỏ hàng không còn tồn tại');
+        }
+
+        if (lockedBook.stock < item.quantity) {
+          throw new AppError(
+            `Sách "${lockedBook.title}" chỉ còn ${lockedBook.stock} cuốn trong kho (bạn đang chọn ${item.quantity})`,
+            400
+          );
+        }
+
+        const price = Number(lockedBook.price);
+        itemsData.push({
+          bookId: lockedBook.id,
+          quantity: item.quantity,
+          price,
+          subTotal: item.quantity * price,
+        });
+      }
+
+      const shippingFee = dto.shippingFee ?? 0;
+      const totalAmount = itemsData.reduce((sum, item) => sum + item.subTotal, 0) + shippingFee;
+      const now = new Date();
+      const dd = String(now.getDate()).padStart(2, '0');
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const yy = String(now.getFullYear()).slice(-2);
+      const randomStr = Math.random().toString(36).substring(2, 6).toUpperCase();
+      const orderCode = `ORD-${dd}${mm}${yy}-${randomStr}`;
+
+      const order = manager.create(Order, {
+        userId: savedGuest.id,
+        addressId: savedAddress.id,
+        orderCode,
+        totalAmount,
+        shippingFee,
+        note: dto.note ?? null,
+        status: OrderStatus.PENDING,
+      });
+      const createdOrder = await manager.save(Order, order);
+
+      const payment = manager.create(Payment, {
+        orderId: createdOrder.id,
+        amount: totalAmount,
+        method: dto.paymentMethod ?? PaymentMethod.COD,
+        status: PaymentStatus.PENDING,
+      });
+      await manager.save(Payment, payment);
+
+      const orderItems = itemsData.map((item) =>
+        manager.create(OrderItem, {
+          orderId: createdOrder.id,
+          bookId: item.bookId,
+          quantity: item.quantity,
+          price: item.price,
+          subTotal: item.subTotal,
+        })
+      );
+      await manager.save(OrderItem, orderItems);
+
+      for (const item of itemsData) {
+        await manager.decrement(Book, { id: item.bookId }, 'stock', item.quantity);
+        await manager.increment(Book, { id: item.bookId }, 'soldCount', item.quantity);
+      }
+
+      return createdOrder;
+    });
+
+    const result = await this.orderRepository.findById(savedOrder.id);
+    await this.sendOrderConfirmationEmail(result!, dto.email);
+    return result!;
+  }
+
+  private async sendOrderConfirmationEmail(order: Order, email?: string): Promise<void> {
+    if (!email) return;
+    return this.sendDetailedOrderConfirmationEmail(order, email);
+
+    const orderCode = order.orderCode || order.id;
+    const phone = order.address?.phone || '';
+    const receiverName = order.address?.receiverName || 'khách hàng';
+    const totalAmount = Number(order.totalAmount || 0).toLocaleString('vi-VN');
+    const itemsHtml = (order.items || [])
+      .map((item) => {
+        const title = this.escapeHtml(item.book?.title || 'Sách');
+        const quantity = Number(item.quantity || 0);
+        const subTotal = Number(item.subTotal || 0).toLocaleString('vi-VN');
+        return `<li>${title} x ${quantity}: ${subTotal}đ</li>`;
+      })
+      .join('');
+
+    const text = [
+      `Xin chào ${receiverName},`,
+      `Đơn hàng ${orderCode} đã được tạo thành công.`,
+      `Tổng thanh toán: ${totalAmount}đ.`,
+      `Tra cứu đơn hàng bằng mã đơn ${orderCode} và số điện thoại ${phone}.`,
+    ].join('\n');
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.6;">
+        <h2 style="color: #ea580c;">Đặt hàng thành công</h2>
+        <p>Xin chào <strong>${this.escapeHtml(receiverName)}</strong>,</p>
+        <p>Đơn hàng <strong>${this.escapeHtml(orderCode)}</strong> đã được tạo thành công.</p>
+        <p><strong>Tổng thanh toán:</strong> ${totalAmount}đ</p>
+        ${itemsHtml ? `<p><strong>Sản phẩm:</strong></p><ul>${itemsHtml}</ul>` : ''}
+        <div style="padding: 12px 16px; background: #eff6ff; border-radius: 8px;">
+          <p style="margin: 0;"><strong>Hướng dẫn tra cứu đơn hàng</strong></p>
+          <p style="margin: 8px 0 0;">Vào trang Tra cứu đơn hàng, nhập mã đơn <strong>${this.escapeHtml(orderCode)}</strong> và số điện thoại <strong>${this.escapeHtml(phone)}</strong>.</p>
+        </div>
+      </div>
+    `;
+
+    await emailQueue.add('sendOrderConfirmation', {
+      to: email,
+      subject: `Xác nhận đơn hàng ${orderCode}`,
+      text,
+      html,
+    });
+  }
+
+  private async sendDetailedOrderConfirmationEmail(order: Order, email: string): Promise<void> {
+    const orderCode = order.orderCode || order.id;
+    const phone = order.address?.phone || '';
+    const receiverName = order.address?.receiverName || 'khách hàng';
+    const shippingFee = Number(order.shippingFee || 0);
+    const totalAmount = Number(order.totalAmount || 0);
+    const subtotal = Math.max(totalAmount - shippingFee, 0);
+    const paymentMethod = order.payments?.[0]?.method || PaymentMethod.COD;
+    const paymentStatus = order.payments?.[0]?.status || PaymentStatus.PENDING;
+    const addressParts = [
+      order.address?.addressLine,
+      order.address?.wardName,
+      order.address?.districtName,
+      order.address?.provinceName,
+      order.address?.country,
+    ].filter(Boolean);
+    const shippingAddress = addressParts.join(', ');
+    const money = (value: number) => `${value.toLocaleString('vi-VN')}đ`;
+    const orderDate = order.createdAt
+      ? new Date(order.createdAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })
+      : new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+    const statusLabel = this.getOrderStatusLabel(order.status);
+    const paymentMethodLabel = this.getPaymentMethodLabel(paymentMethod);
+    const paymentStatusLabel = this.getPaymentStatusLabel(paymentStatus);
+
+    const itemsHtml = (order.items || [])
+      .map((item) => {
+        const title = this.escapeHtml(item.book?.title || 'Sách');
+        const quantity = Number(item.quantity || 0);
+        const price = Number(item.price || 0);
+        const itemSubtotal = Number(item.subTotal || 0);
+        return `
+          <tr>
+            <td style="padding: 10px 8px; border-bottom: 1px solid #e5e7eb;">${title}</td>
+            <td style="padding: 10px 8px; border-bottom: 1px solid #e5e7eb; text-align: center;">${quantity}</td>
+            <td style="padding: 10px 8px; border-bottom: 1px solid #e5e7eb; text-align: right;">${money(price)}</td>
+            <td style="padding: 10px 8px; border-bottom: 1px solid #e5e7eb; text-align: right;"><strong>${money(itemSubtotal)}</strong></td>
+          </tr>
+        `;
+      })
+      .join('');
+    const itemsText = (order.items || [])
+      .map((item) => {
+        const title = item.book?.title || 'Sách';
+        return `- ${title} x ${Number(item.quantity || 0)}: ${money(Number(item.subTotal || 0))}`;
+      })
+      .join('\n');
+
+    const text = [
+      `Xin chào ${receiverName},`,
+      `Đơn hàng ${orderCode} đã được tạo thành công.`,
+      `Ngày đặt: ${orderDate}`,
+      `Trạng thái: ${statusLabel}`,
+      `Người nhận: ${receiverName}`,
+      `Số điện thoại: ${phone}`,
+      `Địa chỉ giao hàng: ${shippingAddress}`,
+      `Phương thức thanh toán: ${paymentMethodLabel}`,
+      `Trạng thái thanh toán: ${paymentStatusLabel}`,
+      '',
+      'Sản phẩm:',
+      itemsText || '- Không có sản phẩm',
+      '',
+      `Tạm tính: ${money(subtotal)}`,
+      `Phí vận chuyển: ${money(shippingFee)}`,
+      `Tổng thanh toán: ${money(totalAmount)}`,
+      order.note ? `Ghi chú: ${order.note}` : '',
+      '',
+      `Tra cứu đơn hàng bằng mã đơn ${orderCode} và số điện thoại ${phone}.`,
+    ].filter((line) => line !== '').join('\n');
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.6; max-width: 720px; margin: 0 auto;">
+        <h2 style="color: #ea580c; margin-bottom: 8px;">Đặt hàng thành công</h2>
+        <p>Xin chào <strong>${this.escapeHtml(receiverName)}</strong>,</p>
+        <p>Đơn hàng <strong>${this.escapeHtml(orderCode)}</strong> đã được tạo thành công. Dưới đây là toàn bộ thông tin đơn hàng của bạn.</p>
+
+        <div style="padding: 16px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 10px; margin: 18px 0;">
+          <p style="margin: 0 0 6px;"><strong>Mã đơn hàng:</strong> ${this.escapeHtml(orderCode)}</p>
+          <p style="margin: 0 0 6px;"><strong>Ngày đặt:</strong> ${this.escapeHtml(orderDate)}</p>
+          <p style="margin: 0;"><strong>Trạng thái:</strong> ${this.escapeHtml(statusLabel)}</p>
+        </div>
+
+        <h3 style="margin: 18px 0 8px;">Thông tin giao hàng</h3>
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr><td style="padding: 6px 0; color: #6b7280;">Người nhận</td><td style="padding: 6px 0; text-align: right;"><strong>${this.escapeHtml(receiverName)}</strong></td></tr>
+          <tr><td style="padding: 6px 0; color: #6b7280;">Số điện thoại</td><td style="padding: 6px 0; text-align: right;"><strong>${this.escapeHtml(phone)}</strong></td></tr>
+          <tr><td style="padding: 6px 0; color: #6b7280;">Địa chỉ</td><td style="padding: 6px 0; text-align: right;">${this.escapeHtml(shippingAddress)}</td></tr>
+        </table>
+
+        <h3 style="margin: 18px 0 8px;">Thanh toán</h3>
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr><td style="padding: 6px 0; color: #6b7280;">Phương thức</td><td style="padding: 6px 0; text-align: right;">${this.escapeHtml(paymentMethodLabel)}</td></tr>
+          <tr><td style="padding: 6px 0; color: #6b7280;">Trạng thái</td><td style="padding: 6px 0; text-align: right;">${this.escapeHtml(paymentStatusLabel)}</td></tr>
+        </table>
+
+        <h3 style="margin: 18px 0 8px;">Sản phẩm</h3>
+        <table style="width: 100%; border-collapse: collapse; border-top: 1px solid #e5e7eb;">
+          <thead>
+            <tr>
+              <th style="padding: 8px; text-align: left; color: #6b7280;">Sách</th>
+              <th style="padding: 8px; text-align: center; color: #6b7280;">SL</th>
+              <th style="padding: 8px; text-align: right; color: #6b7280;">Đơn giá</th>
+              <th style="padding: 8px; text-align: right; color: #6b7280;">Thành tiền</th>
+            </tr>
+          </thead>
+          <tbody>${itemsHtml}</tbody>
+        </table>
+
+        <div style="margin-top: 16px; padding: 16px; background: #f9fafb; border-radius: 10px;">
+          <p style="margin: 0 0 6px; text-align: right;">Tạm tính: <strong>${money(subtotal)}</strong></p>
+          <p style="margin: 0 0 6px; text-align: right;">Phí vận chuyển: <strong>${money(shippingFee)}</strong></p>
+          <p style="margin: 0; text-align: right; font-size: 18px;">Tổng thanh toán: <strong style="color: #ea580c;">${money(totalAmount)}</strong></p>
+        </div>
+
+        ${order.note ? `<p style="margin-top: 16px;"><strong>Ghi chú:</strong> ${this.escapeHtml(order.note)}</p>` : ''}
+
+        <div style="padding: 14px 16px; background: #eff6ff; border-radius: 10px; margin-top: 18px;">
+          <p style="margin: 0;"><strong>Hướng dẫn tra cứu đơn hàng</strong></p>
+          <p style="margin: 8px 0 0;">Vào trang Tra cứu đơn hàng, nhập mã đơn <strong>${this.escapeHtml(orderCode)}</strong> và số điện thoại <strong>${this.escapeHtml(phone)}</strong>.</p>
+        </div>
+      </div>
+    `;
+
+    await emailQueue.add('sendOrderConfirmation', {
+      to: email,
+      subject: `Xác nhận đơn hàng ${orderCode}`,
+      text,
+      html,
+    });
+  }
+
+  private getOrderStatusLabel(status: OrderStatus): string {
+    const labels: Record<OrderStatus, string> = {
+      [OrderStatus.PENDING]: 'Chờ xử lý',
+      [OrderStatus.PROCESSING]: 'Đang xử lý',
+      [OrderStatus.SHIPPED]: 'Đang giao hàng',
+      [OrderStatus.COMPLETED]: 'Hoàn tất',
+      [OrderStatus.CANCELLED]: 'Đã hủy',
+    };
+    return labels[status] || status;
+  }
+
+  private getPaymentMethodLabel(method: PaymentMethod): string {
+    const labels: Record<PaymentMethod, string> = {
+      [PaymentMethod.CREDIT_CARD]: 'Thẻ tín dụng',
+      [PaymentMethod.DEBIT_CARD]: 'Thẻ ghi nợ',
+      [PaymentMethod.BANK_TRANSFER]: 'Chuyển khoản ngân hàng',
+      [PaymentMethod.WALLET]: 'Ví điện tử',
+      [PaymentMethod.COD]: 'Thanh toán khi nhận hàng (COD)',
+    };
+    return labels[method] || method;
+  }
+
+  private getPaymentStatusLabel(status: PaymentStatus): string {
+    const labels: Record<PaymentStatus, string> = {
+      [PaymentStatus.PENDING]: 'Chờ thanh toán',
+      [PaymentStatus.COMPLETED]: 'Đã thanh toán',
+      [PaymentStatus.FAILED]: 'Thanh toán thất bại',
+      [PaymentStatus.REFUNDED]: 'Đã hoàn tiền',
+    };
+    return labels[status] || status;
+  }
+
+  private escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  async trackOrder(orderCode: string, phone: string): Promise<Order> {
+    const order = await this.orderRepository.findByOrderCode(orderCode);
+    if (!order || order.address?.phone !== phone) {
+      throw new NotFoundError('Không tìm thấy đơn hàng phù hợp');
+    }
+
+    return order;
   }
 
   /**

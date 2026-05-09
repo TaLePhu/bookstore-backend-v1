@@ -14,6 +14,9 @@ export const transporter = nodemailer.createTransport({
   host: env.smtp.host,
   port: env.smtp.port,
   secure: env.smtp.port === 465,
+  tls: {
+    rejectUnauthorized: env.smtp.rejectUnauthorized,
+  },
   auth: {
     user: env.smtp.user,
     pass: env.smtp.pass,
@@ -22,7 +25,18 @@ export const transporter = nodemailer.createTransport({
 
 const EMAIL_QUEUE_NAME = 'email-queue';
 
-export const emailQueue = new Queue(EMAIL_QUEUE_NAME, { connection });
+export const emailQueue = new Queue(EMAIL_QUEUE_NAME, {
+  connection,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 5000,
+    },
+    removeOnComplete: 100,
+    removeOnFail: 100,
+  },
+});
 
 export interface EmailJobData {
   to: string;

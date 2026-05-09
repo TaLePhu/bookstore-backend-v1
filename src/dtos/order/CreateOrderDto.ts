@@ -8,9 +8,22 @@ import {
   MaxLength,
   IsArray,
   IsEnum,
-  ValidateIf
+  ValidateIf,
+  ValidateNested,
+  IsInt,
+  IsEmail
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { PaymentMethod } from '@entities/Payment';
+
+export class GuestOrderItemDto {
+  @IsUUID('4', { message: 'bookId phải là UUID hợp lệ' })
+  bookId: string;
+
+  @IsInt({ message: 'quantity phải là số nguyên' })
+  @Min(1, { message: 'quantity phải lớn hơn 0' })
+  quantity: number;
+}
 
 export class CreateOrderDto {
   @IsOptional()
@@ -23,14 +36,23 @@ export class CreateOrderDto {
   @IsUUID('4', { each: true, message: 'Mỗi cartItemId phải là UUID hợp lệ' })
   cartItemIds?: string[];
 
+  @IsOptional()
+  @IsArray({ message: 'guestItems phải là mảng' })
+  @ValidateNested({ each: true })
+  @Type(() => GuestOrderItemDto)
+  guestItems?: GuestOrderItemDto[];
+
+  @IsOptional()
+  @IsEmail({}, { message: 'email không hợp lệ' })
+  email?: string;
+
   // Inline address info (used if addressId is not provided)
   @ValidateIf((o) => !o.addressId)
   @IsNotEmpty({ message: 'country không được để trống khi không chọn địa chỉ có sẵn' })
   @IsString()
   country?: string;
 
-  @ValidateIf((o) => !o.addressId)
-  @IsNotEmpty({ message: 'provinceCode không được để trống khi không chọn địa chỉ có sẵn' })
+  @IsOptional()
   @IsString()
   provinceCode?: string;
 
@@ -39,8 +61,7 @@ export class CreateOrderDto {
   @IsString()
   provinceName?: string;
 
-  @ValidateIf((o) => !o.addressId)
-  @IsNotEmpty({ message: 'districtCode không được để trống khi không chọn địa chỉ có sẵn' })
+  @IsOptional()
   @IsString()
   districtCode?: string;
 
@@ -49,8 +70,7 @@ export class CreateOrderDto {
   @IsString()
   districtName?: string;
 
-  @ValidateIf((o) => !o.addressId)
-  @IsNotEmpty({ message: 'wardCode không được để trống khi không chọn địa chỉ có sẵn' })
+  @IsOptional()
   @IsString()
   wardCode?: string;
 

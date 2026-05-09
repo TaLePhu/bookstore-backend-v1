@@ -57,6 +57,7 @@ export interface EnvConfig {
     port: number;
     user: string;
     pass: string;
+    rejectUnauthorized: boolean;
   };
 
   // Cloudinary
@@ -128,6 +129,7 @@ function parseEnv(): EnvConfig {
       port: parseInt(process.env['SMTP_PORT'] || '587', 10),
       user: process.env['SMTP_USER'] || '',
       pass: process.env['SMTP_PASS'] || '',
+      rejectUnauthorized: process.env['SMTP_TLS_REJECT_UNAUTHORIZED'] !== 'false',
     },
 
     cloudinary: {

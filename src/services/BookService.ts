@@ -85,6 +85,57 @@ export class BookService {
     return book;
   }
 
+  async getRelatedBooks(id: string, limit: number = 5): Promise<{ data: BookResponse[]; total: number; page: number; limit: number }> {
+    const book = await this.getBookById(id);
+    const relatedMap = new Map<string, BookResponse>();
+
+    if (book.categoryId) {
+      const sameCategory = await this.bookRepository.findAllWithFilters({
+        page: 1,
+        limit: limit + 1,
+        categoryId: book.categoryId,
+      });
+
+      sameCategory.data
+        .filter((item) => item.id !== id)
+        .forEach((item) => relatedMap.set(item.id, item));
+    }
+
+    if (relatedMap.size < limit) {
+      const fallback = await this.bookRepository.findAllWithFilters({
+        page: 1,
+        limit: limit + 1,
+        sort: 'bestseller',
+      });
+
+      fallback.data
+        .filter((item) => item.id !== id)
+        .forEach((item) => {
+          if (relatedMap.size < limit) {
+            relatedMap.set(item.id, item);
+          }
+        });
+    }
+
+    if (relatedMap.size < limit) {
+      const fallback = await this.bookRepository.findAllWithFilters({
+        page: 1,
+        limit: limit + 1,
+      });
+
+      fallback.data
+        .filter((item) => item.id !== id)
+        .forEach((item) => {
+          if (relatedMap.size < limit) {
+            relatedMap.set(item.id, item);
+          }
+        });
+    }
+
+    const data = Array.from(relatedMap.values()).slice(0, limit);
+    return { data, total: data.length, page: 1, limit };
+  }
+
   async searchBooks(query: string, page: number = 1, limit: number = 10): Promise<{ data: BookResponse[]; total: number; page: number; limit: number }> {
     if (!query || query.trim() === '') {
       return { data: [], total: 0, page, limit };

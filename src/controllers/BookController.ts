@@ -88,6 +88,35 @@ export class BookController {
     }
   };
 
+  getRelatedBooks = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const { limit } = getSafePagination(1, req.query.limit);
+
+      if (!isUuid(id)) {
+        res.status(400).json({
+          success: false,
+          message: 'Lỗi: ID không đúng định dạng UUID.'
+        });
+        return;
+      }
+
+      const result = await this.bookService.getRelatedBooks(id, limit);
+
+      res.status(200).json({
+        success: true,
+        data: result.data,
+        pagination: {
+          total: result.total,
+          page: result.page,
+          limit: result.limit
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   searchBooks = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       // Nhận query string từ URL (ví dụ: ?q=...)

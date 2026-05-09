@@ -29,6 +29,46 @@ export class OrderController {
     }
   };
 
+  createGuestOrder = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const dto = req.body as CreateOrderDto;
+      const order = await this.orderService.createGuestOrder(dto);
+
+      res.status(201).json({
+        success: true,
+        data: order,
+        message: 'Đặt hàng thành công',
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  trackOrder = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const orderCode = String(req.query.orderCode || '').trim();
+      const phone = String(req.query.phone || '').trim();
+
+      if (!orderCode || !phone) {
+        res.status(400).json({
+          success: false,
+          message: 'Vui lòng nhập mã đơn hàng và số điện thoại',
+        });
+        return;
+      }
+
+      const order = await this.orderService.trackOrder(orderCode, phone);
+
+      res.status(200).json({
+        success: true,
+        data: order,
+        message: 'Lấy thông tin đơn hàng thành công',
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   /**
    * GET /orders/my?page=1&limit=10
    * Lấy danh sách đơn hàng của user đang đăng nhập (có phân trang).

@@ -7,9 +7,30 @@ import { OrderStatus } from '@entities/Order';
 
 export class BookRepository implements IBookRepository {
   private repository: Repository<Book>;
+  private readonly fallbackImageUrls = [
+    'https://images.unsplash.com/photo-1544947950-fa07a98d237f?q=80&w=800',
+    'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?q=80&w=800',
+    'https://images.unsplash.com/photo-1495446815901-a7297e633e8d?q=80&w=800',
+    'https://images.unsplash.com/photo-1512820790803-83ca734da794?q=80&w=800',
+    'https://images.unsplash.com/photo-1516979187457-637abb4f9353?q=80&w=800',
+  ];
 
   constructor() {
     this.repository = AppDataSource.getRepository(Book);
+  }
+
+  private getFallbackImageUrl(bookId: string): string {
+    const hash = bookId.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+    return this.fallbackImageUrls[hash % this.fallbackImageUrls.length];
+  }
+
+  private getBookImageUrl(book: Book): string {
+    const images = [...(book.images || [])].sort((left, right) => {
+      if (left.isPrimary === right.isPrimary) return 0;
+      return left.isPrimary ? -1 : 1;
+    });
+
+    return images[0]?.url || this.getFallbackImageUrl(book.id);
   }
 
   private async mapBooksToResponse(books: Book[]): Promise<BookResponse[]> {
@@ -30,6 +51,7 @@ export class BookRepository implements IBookRepository {
       const stat = stats.find((item) => item.id === book.id);
       return {
         ...book,
+        image: this.getBookImageUrl(book),
         totalReviews: Number(stat?.totalReviews || 0),
         rating: Number(Number(stat?.rating || 0).toFixed(1)),
         status: book.stock > 0 ? 'in_stock' : 'out_of_stock',
@@ -51,7 +73,8 @@ export class BookRepository implements IBookRepository {
     const skip = (page - 1) * limit;
     const qb = this.repository
       .createQueryBuilder('book')
-      .leftJoinAndSelect('book.category', 'category');
+      .leftJoinAndSelect('book.category', 'category')
+      .leftJoinAndSelect('book.images', 'images');
 
     if (categoryId) {
       qb.andWhere('book.categoryId = :categoryId', { categoryId });
@@ -90,6 +113,7 @@ export class BookRepository implements IBookRepository {
 
     return {
       ...book,
+      image: this.getBookImageUrl(book),
       totalReviews,
       rating
     } as BookResponse;
@@ -101,6 +125,7 @@ export class BookRepository implements IBookRepository {
     // Sử dụng QueryBuilder cho tìm kiếm tương đối trên cả title và author
     const qb = this.repository.createQueryBuilder('book')
       .leftJoinAndSelect('book.category', 'category')
+      .leftJoinAndSelect('book.images', 'images')
       .where('book.title ILIKE :query OR book.author ILIKE :query', { query: `%${query}%` })
       .orderBy('book.createdAt', 'DESC')
       .skip(skip)
@@ -122,6 +147,7 @@ export class BookRepository implements IBookRepository {
     const qb = this.repository
       .createQueryBuilder('book')
       .leftJoinAndSelect('book.category', 'category')
+      .leftJoinAndSelect('book.images', 'images')
       .where(
         `book.title ILIKE :query
         OR book.author ILIKE :query
@@ -163,7 +189,7 @@ export class BookRepository implements IBookRepository {
 
     const books = await this.repository.find({
       where: { id: In(ids) },
-      relations: ['category'],
+      relations: ['category', 'images'],
     });
 
     const orderMap = new Map(ids.map((id, index) => [id, index]));
@@ -194,7 +220,7 @@ export class BookRepository implements IBookRepository {
     const total = totalRows.length;
 
     if (total === 0) {
-      return { data: [], total };
+      return this.findBestSellerBooksBySoldCount(page, limit, categoryId);
     }
 
     const pageRows = await baseQb.clone().skip(skip).take(limit).getRawMany<{ bookId: string }>();
@@ -206,12 +232,34 @@ export class BookRepository implements IBookRepository {
 
     const books = await this.repository.find({
       where: { id: In(sortedBookIds) },
-      relations: ['category'],
+      relations: ['category', 'images'],
     });
 
     const orderMap = new Map(sortedBookIds.map((id, index) => [id, index]));
     const sortedBooks = books.sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
     const data = await this.mapBooksToResponse(sortedBooks);
+
+    return { data, total };
+  }
+
+  private async findBestSellerBooksBySoldCount(page: number, limit: number, categoryId?: string): Promise<{ data: BookResponse[]; total: number }> {
+    const skip = (page - 1) * limit;
+    const qb = this.repository
+      .createQueryBuilder('book')
+      .leftJoinAndSelect('book.category', 'category')
+      .leftJoinAndSelect('book.images', 'images');
+
+    if (categoryId) {
+      qb.andWhere('book.categoryId = :categoryId', { categoryId });
+    }
+
+    qb.orderBy('book.soldCount', 'DESC')
+      .addOrderBy('book.createdAt', 'DESC')
+      .skip(skip)
+      .take(limit);
+
+    const [books, total] = await qb.getManyAndCount();
+    const data = await this.mapBooksToResponse(books);
 
     return { data, total };
   }

@@ -9,6 +9,7 @@ const bookController = container.resolve(BookController);
 router.get('/semantic-search', bookController.semanticSearchBooks);
 router.get('/search', bookController.searchBooks);
 router.get('/', bookController.getAllBooks);
+router.get('/:id/related', bookController.getRelatedBooks);
 router.get('/:id', bookController.getBookById);
 
 export default router;
