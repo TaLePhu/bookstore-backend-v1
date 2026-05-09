@@ -47,17 +47,16 @@ export class OrderController {
   trackOrder = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const orderCode = String(req.query.orderCode || '').trim();
-      const phone = String(req.query.phone || '').trim();
 
-      if (!orderCode || !phone) {
+      if (!orderCode) {
         res.status(400).json({
           success: false,
-          message: 'Vui lòng nhập mã đơn hàng và số điện thoại',
+          message: 'Vui lòng nhập mã đơn hàng',
         });
         return;
       }
 
-      const order = await this.orderService.trackOrder(orderCode, phone);
+      const order = await this.orderService.trackOrder(orderCode);
 
       res.status(200).json({
         success: true,

@@ -545,9 +545,9 @@ export class OrderService {
       .replace(/'/g, '&#039;');
   }
 
-  async trackOrder(orderCode: string, phone: string): Promise<Order> {
+  async trackOrder(orderCode: string): Promise<Order> {
     const order = await this.orderRepository.findByOrderCode(orderCode);
-    if (!order || order.address?.phone !== phone) {
+    if (!order) {
       throw new NotFoundError('Không tìm thấy đơn hàng phù hợp');
     }
 
