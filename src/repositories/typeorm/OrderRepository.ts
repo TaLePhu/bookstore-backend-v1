@@ -24,7 +24,7 @@ export class OrderRepository implements IOrderRepository {
 
     const [orders, total] = await this.repository.findAndCount({
       where: { userId },
-      relations: ['items', 'items.book', 'address'],
+      relations: ['items', 'items.book', 'items.book.images', 'address'],
       order: { createdAt: 'DESC' },
       skip,
       take: limit,
@@ -36,7 +36,7 @@ export class OrderRepository implements IOrderRepository {
   async findByIdAndUserId(orderId: string, userId: string): Promise<Order | null> {
     return await this.repository.findOne({
       where: { id: orderId, userId },
-      relations: ['items', 'items.book', 'address'],
+      relations: ['items', 'items.book', 'items.book.images', 'address'],
     });
   }
 
@@ -94,14 +94,14 @@ export class OrderRepository implements IOrderRepository {
   async findById(orderId: string): Promise<Order | null> {
     return await this.repository.findOne({
       where: { id: orderId },
-      relations: ['items', 'items.book', 'address', 'user', 'payments'],
+      relations: ['items', 'items.book', 'items.book.images', 'address', 'user', 'payments'],
     });
   }
 
   async findByOrderCode(orderCode: string): Promise<Order | null> {
     return await this.repository.findOne({
       where: { orderCode },
-      relations: ['items', 'items.book', 'address', 'user', 'payments'],
+      relations: ['items', 'items.book', 'items.book.images', 'address', 'user', 'payments'],
     });
   }
 

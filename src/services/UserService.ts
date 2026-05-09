@@ -1,11 +1,12 @@
 import { injectable, inject } from 'tsyringe';
+import { AppDataSource } from '@config/data-source';
 import { UpdateProfileDto } from '@dtos/user/UpdateProfileDto';
 import { ChangePasswordDto } from '@dtos/user/ChangePasswordDto';
 import { IUserRepository } from '@repositories/interfaces/IUserRepository';
 import { IRefreshTokenRepository } from '@repositories/interfaces/IRefreshTokenRepository';
 import { TOKENS } from '@config/container';
 import { NotFoundError, UnauthorizedError } from '@utils/errors';
-import { Role } from '@entities/User';
+import { Role, User } from '@entities/User';
 import { UserAdvance } from '@entities/UserAdvance';
 import { HashHelper } from '@utils/hash';
 import { TokenHelper } from '@utils/jwt';
@@ -51,24 +52,24 @@ export class UserService {
       user.fullName = data.fullName;
     }
 
+    await this.userRepository.update(userId, {
+      fullName: user.fullName,
+    } as any);
+
     // Process user advance fields
     const advanceFields = ['avatar', 'dob', 'gender', 'phone'];
     const hasAdvanceUpdate = advanceFields.some((field) => data[field as keyof UpdateProfileDto] !== undefined);
 
     if (hasAdvanceUpdate) {
-      if (!user.userAdvance) {
-        user.userAdvance = new UserAdvance();
-      }
-      
-      if (data.avatar !== undefined) user.userAdvance.avatar = data.avatar;
-      if (data.dob !== undefined) user.userAdvance.dob = new Date(data.dob);
-      if (data.gender !== undefined) user.userAdvance.gender = data.gender;
-      if (data.phone !== undefined) user.userAdvance.phone = data.phone;
-    }
+      const userAdvanceRepository = AppDataSource.getRepository(UserAdvance);
+      const userAdvance = user.userAdvance || userAdvanceRepository.create({ userId });
 
-    const updatedUser = await this.userRepository.update(userId, user);
-    if (!updatedUser) {
-      throw new NotFoundError('Failed to update user');
+      if (data.avatar !== undefined) userAdvance.avatar = data.avatar;
+      if (data.dob !== undefined) userAdvance.dob = new Date(data.dob);
+      if (data.gender !== undefined) userAdvance.gender = data.gender;
+      if (data.phone !== undefined) userAdvance.phone = data.phone;
+
+      await userAdvanceRepository.save(userAdvance);
     }
 
     // Refresh loaded relations
@@ -77,7 +78,12 @@ export class UserService {
   }
 
   async changePassword(userId: string, deviceId: string, data: ChangePasswordDto) {
-    const user = await this.userRepository.findById(userId);
+    const user = await AppDataSource.getRepository(User)
+      .createQueryBuilder('user')
+      .where('user.id = :userId', { userId })
+      .addSelect('user.passwordHash')
+      .getOne();
+
     if (!user) {
       throw new NotFoundError('User not found');
     }
@@ -90,7 +96,9 @@ export class UserService {
 
     // Hash new password
     user.passwordHash = await HashHelper.hash(data.newPassword);
-    await this.userRepository.update(userId, user);
+    await AppDataSource.getRepository(User).update(userId, {
+      passwordHash: user.passwordHash,
+    } as any);
 
     // Invalidate all tokens
     await this.refreshTokenRepository.revokeAllByUserId(userId);

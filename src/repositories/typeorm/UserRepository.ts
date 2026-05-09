@@ -20,6 +20,7 @@ export class UserRepository implements IUserRepository {
 
   async findByEmail(email: string): Promise<User | null> {
     return this.repository.createQueryBuilder('user')
+      .leftJoinAndSelect('user.userAdvance', 'userAdvance')
       .where('user.email = :email', { email })
       .addSelect('user.passwordHash')
       .getOne();

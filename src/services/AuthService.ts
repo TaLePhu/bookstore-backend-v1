@@ -1,4 +1,5 @@
 import { injectable, inject } from 'tsyringe';
+import { AppDataSource } from '@config/data-source';
 import { randomInt } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { RegisterDto } from '@dtos/auth/RegisterDto';
@@ -11,6 +12,7 @@ import { HashHelper } from '@utils/hash';
 import { TokenHelper, TokenPayload } from '@utils/jwt';
 import { ConflictError, UnauthorizedError, ForbiddenError, NotFoundError } from '@utils/errors';
 import { Role } from '@entities/User';
+import { UserAdvance } from '@entities/UserAdvance';
 import { RefreshToken } from '@entities/RefreshToken';
 import redisConfig from '@config/redis';
 import { emailQueue } from '@config/queue';
@@ -19,6 +21,8 @@ export interface AuthResponse {
   id: string;
   email: string;
   userName: string;
+  fullName?: string;
+  phone?: string;
   role: Role;
   accessToken: string;
   refreshToken: string;
@@ -48,10 +52,20 @@ export class AuthService {
     const user = await this.userRepository.create({
       email: data.email,
       userName: data.userName,
+      fullName: data.fullName || data.userName,
       passwordHash,
       role: Role.CUSTOMER,
       isVerified: false,
     } as any);
+
+    if (data.phone) {
+      const userAdvanceRepository = AppDataSource.getRepository(UserAdvance);
+      const userAdvance = userAdvanceRepository.create({
+        userId: user.id,
+        phone: data.phone,
+      } as any);
+      await userAdvanceRepository.save(userAdvance);
+    }
 
     await this.sendVerificationCode(data.email);
 
@@ -107,8 +121,11 @@ export class AuthService {
     }
     
     // Update user
-    user.isVerified = true;
-    await this.userRepository.update(user.id, user);
+    await this.userRepository.update(user.id, { isVerified: true } as any);
+    const verifiedUser = await this.userRepository.findById(user.id, ['userAdvance']);
+    if (!verifiedUser) {
+      throw new UnauthorizedError('KhĂ´ng tĂ¬m tháº¥y user');
+    }
     
     // Remove code from redis
     await redisConfig.del(`verify_code:${email}`);
@@ -117,19 +134,21 @@ export class AuthService {
     const deviceId = uuidv4();
 
     const { accessToken, refreshTokenValue, refreshPayload } = this.generateTokenPair({
-      userId: user.id,
+      userId: verifiedUser.id,
       deviceId,
-      email: user.email,
-      role: user.role,
+      email: verifiedUser.email,
+      role: verifiedUser.role,
     });
 
-    await this.storeSession(user.id, deviceId, refreshTokenValue, refreshPayload);
+    await this.storeSession(verifiedUser.id, deviceId, refreshTokenValue, refreshPayload);
 
     return {
-      id: user.id,
-      userName: user.userName,
-      email: user.email,
-      role: user.role,
+      id: verifiedUser.id,
+      userName: verifiedUser.userName,
+      fullName: verifiedUser.fullName,
+      email: verifiedUser.email,
+      phone: verifiedUser.userAdvance?.phone,
+      role: verifiedUser.role,
       accessToken,
       refreshToken: refreshTokenValue,
       deviceId,
@@ -171,7 +190,9 @@ export class AuthService {
     return {
       id: user.id,
       userName: user.userName,
+      fullName: user.fullName,
       email: user.email,
+      phone: user.userAdvance?.phone,
       role: user.role,
       accessToken,
       refreshToken: refreshTokenValue,
@@ -211,7 +232,7 @@ export class AuthService {
       }
     }
 
-    const user = await this.userRepository.findById(refreshPayload.userId);
+    const user = await this.userRepository.findById(refreshPayload.userId, ['userAdvance']);
     if (!user) {
       throw new UnauthorizedError('Invalid refresh token');
     }
@@ -238,7 +259,9 @@ export class AuthService {
     return {
       id: user.id,
       userName: user.userName,
+      fullName: user.fullName,
       email: user.email,
+      phone: user.userAdvance?.phone,
       role: user.role,
       accessToken,
       refreshToken: refreshTokenValue,

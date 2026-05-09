@@ -13,7 +13,7 @@ export class CartRepository implements ICartRepository {
   async findActiveByUserId(userId: string): Promise<Cart | null> {
     return await this.repository.findOne({
       where: { userId },
-      relations: ['items', 'items.book'],
+      relations: ['items', 'items.book', 'items.book.images'],
       order: {
         createdAt: 'DESC', // Lấy giỏ hàng mới nhất
         items: {
