@@ -11,8 +11,9 @@ export class AIAdvisorController {
       const question = typeof req.body?.question === 'string' ? req.body.question : '';
       const parsedLimit = parseInt(String(req.body?.limit ?? ''), 10);
       const limit = Number.isFinite(parsedLimit) ? parsedLimit : 4;
+      const history = Array.isArray(req.body?.history) ? req.body.history : [];
 
-      const result = await this.aiAdvisorService.advise(question, limit);
+      const result = await this.aiAdvisorService.advise(question, limit, history);
 
       res.status(200).json({
         success: true,
