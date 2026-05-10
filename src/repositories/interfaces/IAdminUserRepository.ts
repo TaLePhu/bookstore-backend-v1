@@ -4,6 +4,8 @@ export interface AdminUserFilter {
   role?: Role;
   email?: string;
   fullName?: string;
+  isVerified?: boolean;
+  isLocked?: boolean;
   page?: number;
   limit?: number;
 }
@@ -32,6 +34,15 @@ export interface CustomerSummary {
 }
 
 export interface IAdminUserRepository {
+  createUser(data: {
+    userName: string;
+    fullName?: string | null;
+    email: string;
+    passwordHash: string;
+    role: Role;
+    isVerified?: boolean;
+    phone?: string;
+  }): Promise<User>;
   /** Lấy danh sách user, hỗ trợ lọc role và tìm kiếm email/fullName  */
   findAll(filter: AdminUserFilter): Promise<PaginatedUsers>;
 

@@ -24,7 +24,7 @@ export class OrderRepository implements IOrderRepository {
 
     const [orders, total] = await this.repository.findAndCount({
       where: { userId },
-      relations: ['items', 'items.book', 'items.book.images', 'address'],
+      relations: ['items', 'items.book', 'items.book.images', 'address', 'statusLogs'],
       order: { createdAt: 'DESC' },
       skip,
       take: limit,
@@ -36,7 +36,7 @@ export class OrderRepository implements IOrderRepository {
   async findByIdAndUserId(orderId: string, userId: string): Promise<Order | null> {
     return await this.repository.findOne({
       where: { id: orderId, userId },
-      relations: ['items', 'items.book', 'items.book.images', 'address'],
+      relations: ['items', 'items.book', 'items.book.images', 'address', 'payments', 'statusLogs', 'statusLogs.changedByUser'],
     });
   }
 
@@ -61,6 +61,17 @@ export class OrderRepository implements IOrderRepository {
       .addSelect('user.userName', 'customerUserName')
       .addSelect('user.email', 'customerEmail')
       .addSelect('COALESCE(SUM(item.quantity), 0)', 'totalItems')
+      .addSelect(
+        `(
+          SELECT COUNT(1)
+          FROM order_status_logs cancel_log
+          WHERE cancel_log.order_id = order.id
+            AND cancel_log.from_status = cancel_log.to_status
+            AND cancel_log.changed_by IS NULL
+            AND order.status IN ('PENDING', 'PROCESSING')
+        )`,
+        'cancelRequested'
+      )
       .groupBy('order.id')
       .addGroupBy('user.id')
       .orderBy('order.createdAt', 'DESC')
@@ -86,6 +97,7 @@ export class OrderRepository implements IOrderRepository {
       totalItems: Number(row.totalItems ?? 0),
       totalAmount: Number(row.totalAmount ?? 0),
       status: row.status,
+      cancelRequested: Boolean(Number((row as any).cancelRequested ?? 0)),
     }));
 
     return { orders, total };
@@ -94,14 +106,14 @@ export class OrderRepository implements IOrderRepository {
   async findById(orderId: string): Promise<Order | null> {
     return await this.repository.findOne({
       where: { id: orderId },
-      relations: ['items', 'items.book', 'items.book.images', 'address', 'user', 'payments'],
+      relations: ['items', 'items.book', 'items.book.images', 'address', 'user', 'payments', 'statusLogs', 'statusLogs.changedByUser'],
     });
   }
 
   async findByOrderCode(orderCode: string): Promise<Order | null> {
     return await this.repository.findOne({
       where: { orderCode },
-      relations: ['items', 'items.book', 'items.book.images', 'address', 'user', 'payments'],
+      relations: ['items', 'items.book', 'items.book.images', 'address', 'user', 'payments', 'statusLogs', 'statusLogs.changedByUser'],
     });
   }
 

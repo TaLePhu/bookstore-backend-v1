@@ -17,6 +17,7 @@ export interface ManagementOrderListItem {
   totalItems: number;
   totalAmount: number;
   status: OrderStatus;
+  cancelRequested?: boolean;
 }
 
 @singleton()
@@ -48,6 +49,7 @@ export class AdminOrderService {
         totalItems: item.totalItems,
         totalAmount: item.totalAmount,
         status: item.status,
+        cancelRequested: item.cancelRequested,
       };
     });
 

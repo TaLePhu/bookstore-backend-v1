@@ -23,6 +23,16 @@ export interface AdminUserListItem {
   createdAt: Date;
 }
 
+export interface CreateAdminUserInput {
+  userName: string;
+  fullName?: string;
+  email: string;
+  phone?: string;
+  password: string;
+  role: Role.CUSTOMER | Role.STAFF;
+  isVerified?: boolean;
+}
+
 @injectable()
 export class AdminUserService {
   constructor(

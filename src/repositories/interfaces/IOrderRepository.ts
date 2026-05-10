@@ -10,6 +10,7 @@ export interface AdminOrderListItem {
   totalItems: number;
   totalAmount: number;
   status: OrderStatus;
+  cancelRequested?: boolean;
 }
 
 export interface CustomerOrderHistoryItem {

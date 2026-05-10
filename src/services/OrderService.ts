@@ -57,31 +57,19 @@ export class OrderService {
         throw new AppError('Chỉ có thể yêu cầu hủy đơn hàng khi đơn còn chờ xác nhận hoặc đang xử lý', 400);
       }
 
-      const previousStatus = order.status;
-      order.status = OrderStatus.CANCELLED;
-      await manager.save(Order, order);
-
-      const orderWithItems = await manager.findOne(Order, {
-        where: { id: order.id },
-        relations: ['items'],
+      const existingRequest = await manager.findOne(OrderStatusLog, {
+        where: { orderId: order.id, fromStatus: order.status, toStatus: order.status },
+        order: { createdAt: 'DESC' },
       });
 
-      for (const item of orderWithItems?.items ?? []) {
-        const book = await manager.findOne(Book, {
-          where: { id: item.bookId },
-          lock: { mode: 'pessimistic_write' },
-        });
-
-        if (!book) continue;
-
-        await manager.increment(Book, { id: item.bookId }, 'stock', item.quantity);
-        await manager.decrement(Book, { id: item.bookId }, 'soldCount', item.quantity);
+      if (existingRequest?.note?.startsWith('KhĂ¡ch yĂªu cáº§u há»§y:')) {
+        throw new AppError('Đơn hàng này đã có yêu cầu hủy đang chờ xử lý', 400);
       }
 
       const log = manager.create(OrderStatusLog, {
         orderId: order.id,
-        fromStatus: previousStatus,
-        toStatus: OrderStatus.CANCELLED,
+        fromStatus: order.status,
+        toStatus: order.status,
         note: `Khách yêu cầu hủy: ${cancelReason}`,
         changedBy: null,
       });

@@ -15,12 +15,14 @@ export class AdminUserController {
    */
   listUsers = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { role, email, full_name, page, limit } = req.query;
+      const { role, email, full_name, page, limit, is_verified, is_locked } = req.query;
 
       const filter: AdminUserFilter = {
         role:     role     ? (role as Role)         : undefined,
         email:    email    ? (email as string)       : undefined,
         fullName: full_name ? (full_name as string)  : undefined,
+        isVerified: is_verified === undefined ? undefined : String(is_verified) === 'true',
+        isLocked: is_locked === undefined ? undefined : String(is_locked) === 'true',
         page:     page     ? parseInt(page as string, 10)  : 1,
         limit:    limit    ? parseInt(limit as string, 10) : 10,
       };

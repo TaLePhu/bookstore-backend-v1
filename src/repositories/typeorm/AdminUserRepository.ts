@@ -1,5 +1,6 @@
 import { Repository } from 'typeorm';
 import { User, Role } from '@entities/User';
+import { UserAdvance } from '@entities/UserAdvance';
 import { AppDataSource } from '@config/data-source';
 import {
   IAdminUserRepository,
@@ -7,13 +8,47 @@ import {
   PaginatedUsers,
   CustomerSummary,
 } from '@repositories/interfaces/IAdminUserRepository';
-import { NotFoundError } from '@utils/errors';
+import { ConflictError, NotFoundError } from '@utils/errors';
 
 export class AdminUserRepository implements IAdminUserRepository {
   private repository: Repository<User>;
 
   constructor() {
     this.repository = AppDataSource.getRepository(User);
+  }
+
+  async createUser(data: {
+    userName: string;
+    fullName?: string | null;
+    email: string;
+    passwordHash: string;
+    role: Role;
+    isVerified?: boolean;
+    phone?: string;
+  }): Promise<User> {
+    const existing = await this.repository.findOne({ where: { email: data.email } });
+    if (existing) {
+      throw new ConflictError('Email đã được sử dụng');
+    }
+
+    const user = this.repository.create({
+      userName: data.userName,
+      fullName: data.fullName ?? null,
+      email: data.email,
+      passwordHash: data.passwordHash,
+      role: data.role,
+      isVerified: data.isVerified ?? true,
+      isLocked: false,
+    });
+
+    const saved = await this.repository.save(user);
+
+    if (data.phone) {
+      const advanceRepo = AppDataSource.getRepository(UserAdvance);
+      await advanceRepo.save(advanceRepo.create({ userId: saved.id, phone: data.phone }));
+    }
+
+    return saved;
   }
 
   // ─── GET /admin/users ─────────────────────────────────────────────────────
@@ -43,6 +78,14 @@ export class AdminUserRepository implements IAdminUserRepository {
       qb.andWhere('LOWER(user.fullName) LIKE LOWER(:fullName)', {
         fullName: `%${filter.fullName}%`,
       });
+    }
+
+    if (typeof filter.isVerified === 'boolean') {
+      qb.andWhere('user.isVerified = :isVerified', { isVerified: filter.isVerified });
+    }
+
+    if (typeof filter.isLocked === 'boolean') {
+      qb.andWhere('user.isLocked = :isLocked', { isLocked: filter.isLocked });
     }
 
     const [users, total] = await qb.getManyAndCount();
