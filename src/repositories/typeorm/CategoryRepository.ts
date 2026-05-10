@@ -10,16 +10,30 @@ export class CategoryRepository implements ICategoryRepository {
     this.repository = AppDataSource.getRepository(Category);
   }
 
-  async findAll(): Promise<Category[]> {
-    return this.repository.find({
-      order: {
-        createdAt: 'ASC', // Order categories chronologically or by name (e.g. name: 'ASC')
-      },
-    });
+  async findAll(options: { includeDeleted?: boolean; onlyDeleted?: boolean } = {}): Promise<Category[]> {
+    const qb = this.repository.createQueryBuilder('category');
+
+    if (options.includeDeleted || options.onlyDeleted) {
+      qb.withDeleted();
+    }
+
+    if (options.onlyDeleted) {
+      qb.where('category.deletedAt IS NOT NULL');
+    }
+
+    return qb.orderBy('category.createdAt', 'ASC').getMany();
   }
 
-  async findById(id: string): Promise<Category | null> {
-    return this.repository.findOne({ where: { id } });
+  async findById(id: string, includeDeleted = false): Promise<Category | null> {
+    const qb = this.repository
+      .createQueryBuilder('category')
+      .where('category.id = :id', { id });
+
+    if (includeDeleted) {
+      qb.withDeleted();
+    }
+
+    return qb.getOne();
   }
 
   async create(category: Partial<Category>): Promise<Category> {
@@ -35,7 +49,17 @@ export class CategoryRepository implements ICategoryRepository {
     return this.repository.save(existingCategory);
   }
 
-  async delete(id: string): Promise<boolean> {
+  async softDelete(id: string): Promise<boolean> {
+    const result = await this.repository.softDelete({ id });
+    return result.affected ? result.affected > 0 : false;
+  }
+
+  async restore(id: string): Promise<boolean> {
+    const result = await this.repository.restore({ id });
+    return result.affected ? result.affected > 0 : false;
+  }
+
+  async hardDelete(id: string): Promise<boolean> {
     const result = await this.repository.delete({ id });
     return result.affected ? result.affected > 0 : false;
   }

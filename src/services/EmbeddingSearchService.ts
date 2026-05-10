@@ -39,8 +39,9 @@ export class EmbeddingSearchService {
         SELECT 
           e.book_id,
           (1 - (e.vector <=> $1::vector)) as similarity
-        FROM embeddings e
-        WHERE (1 - (e.vector <=> $1::vector)) >= $2
+        INNER JOIN books b ON b.id = e.book_id
+        WHERE b.deleted_at IS NULL
+          AND (1 - (e.vector <=> $1::vector)) >= $2
         ORDER BY e.vector <=> $1::vector
         OFFSET $3
         LIMIT $4
@@ -49,7 +50,9 @@ export class EmbeddingSearchService {
       const countQuery = `
         SELECT COUNT(1) as total
         FROM embeddings e
-        WHERE (1 - (e.vector <=> $1::vector)) >= $2
+        INNER JOIN books b ON b.id = e.book_id
+        WHERE b.deleted_at IS NULL
+          AND (1 - (e.vector <=> $1::vector)) >= $2
       `;
 
       const [results, countRows] = await Promise.all([

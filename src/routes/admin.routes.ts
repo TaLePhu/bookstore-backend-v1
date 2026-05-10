@@ -113,6 +113,10 @@ router.put(
   adminCategoryController.updateCategory,
 );
 
+router.patch('/categories/:id/restore', adminCategoryController.restoreCategory);
+
+router.delete('/categories/:id/hard', adminCategoryController.hardDeleteCategory);
+
 /**
  * DELETE /admin/categories/:id
  * Xóa thể loại

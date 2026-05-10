@@ -68,6 +68,42 @@ export class OrderController {
     }
   };
 
+  requestCancelOrder = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const orderCode = String(req.body?.orderCode || '').trim();
+      const reason = String(req.body?.reason || '').trim();
+
+      const order = await this.orderService.requestCancelOrder(orderCode, reason);
+
+      res.status(200).json({
+        success: true,
+        data: order,
+        message: 'Yêu cầu hủy đơn hàng đã được ghi nhận',
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  submitOrderReview = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const review = await this.orderService.submitOrderReview({
+        orderCode: String(req.body?.orderCode || ''),
+        bookId: String(req.body?.bookId || ''),
+        rating: Number(req.body?.rating),
+        comment: req.body?.comment ? String(req.body.comment) : undefined,
+      });
+
+      res.status(201).json({
+        success: true,
+        data: review,
+        message: 'Cảm ơn bạn đã đánh giá sản phẩm',
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   /**
    * GET /orders/my?page=1&limit=10
    * Lấy danh sách đơn hàng của user đang đăng nhập (có phân trang).

@@ -55,7 +55,7 @@ export class BookRepository implements IBookRepository {
         image: this.getBookImageUrl(book),
         totalReviews: Number(stat?.totalReviews || 0),
         rating: Number(Number(stat?.rating || 0).toFixed(1)),
-        status: book.deletedAt ? 'deleted' : book.stock > 0 ? 'in_stock' : 'out_of_stock',
+        status: book.deletedAt ? 'deleted' : Number(book.stock) > 0 ? 'in_stock' : 'out_of_stock',
       } as BookResponse;
     });
   }
@@ -92,7 +92,7 @@ export class BookRepository implements IBookRepository {
     if (status === 'in_stock') {
       qb.andWhere('book.stock > 0');
     } else if (status === 'out_of_stock') {
-      qb.andWhere('book.stock = 0');
+      qb.andWhere('book.stock <= 0');
     }
 
     if (sort === 'latest') {
@@ -134,7 +134,7 @@ export class BookRepository implements IBookRepository {
       image: this.getBookImageUrl(book),
       totalReviews,
       rating,
-      status: book.deletedAt ? 'deleted' : book.stock > 0 ? 'in_stock' : 'out_of_stock',
+      status: book.deletedAt ? 'deleted' : Number(book.stock) > 0 ? 'in_stock' : 'out_of_stock',
     } as BookResponse;
   }
 

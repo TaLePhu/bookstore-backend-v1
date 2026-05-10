@@ -10,6 +10,8 @@ const orderController = container.resolve(OrderController);
 
 router.post('/guest', validateDto(CreateOrderDto), orderController.createGuestOrder);
 router.get('/track', orderController.trackOrder);
+router.post('/cancel-request', orderController.requestCancelOrder);
+router.post('/review', orderController.submitOrderReview);
 
 router.use(authMiddleware);
 

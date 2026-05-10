@@ -9,7 +9,10 @@ export class AdminCategoryController {
 
   getAllCategories = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const categories = await this.categoryService.getAllCategories();
+      const includeDeleted = req.query.include_deleted === 'true';
+      const onlyDeleted = req.query.only_deleted === 'true';
+      const categories = await this.categoryService.getAllCategories({ includeDeleted, onlyDeleted });
+
       res.status(200).json({
         success: true,
         data: categories,
@@ -22,10 +25,10 @@ export class AdminCategoryController {
   getCategoryById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id } = req.params;
-      const category = await this.categoryService.getCategoryById(id);
+      const category = await this.categoryService.getCategoryById(id, true);
 
       if (!category) {
-        throw new AppError('Không tìm thấy thể loại', 404);
+        throw new AppError('Khong tim thay the loai', 404);
       }
 
       res.status(200).json({
@@ -43,7 +46,7 @@ export class AdminCategoryController {
 
       res.status(201).json({
         success: true,
-        message: 'Tạo thể loại thành công',
+        message: 'Tao the loai thanh cong',
         data: newCategory,
       });
     } catch (error) {
@@ -57,12 +60,12 @@ export class AdminCategoryController {
       const updatedCategory = await this.categoryService.updateCategory(id, req.body);
 
       if (!updatedCategory) {
-        throw new AppError('Không tìm thấy thể loại', 404);
+        throw new AppError('Khong tim thay the loai', 404);
       }
 
       res.status(200).json({
         success: true,
-        message: 'Cập nhật thể loại thành công',
+        message: 'Cap nhat the loai thanh cong',
         data: updatedCategory,
       });
     } catch (error) {
@@ -73,15 +76,51 @@ export class AdminCategoryController {
   deleteCategory = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id } = req.params;
-      const success = await this.categoryService.deleteCategory(id);
+      const success = await this.categoryService.softDeleteCategory(id);
 
       if (!success) {
-        throw new AppError('Không tìm thấy thể loại để xóa', 404);
+        throw new AppError('Khong tim thay the loai de xoa mem', 404);
       }
 
       res.status(200).json({
         success: true,
-        message: 'Xóa thể loại thành công',
+        message: 'Xoa mem the loai thanh cong',
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  restoreCategory = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const success = await this.categoryService.restoreCategory(id);
+
+      if (!success) {
+        throw new AppError('Khong tim thay the loai de khoi phuc', 404);
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Khoi phuc the loai thanh cong',
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  hardDeleteCategory = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const success = await this.categoryService.hardDeleteCategory(id);
+
+      if (!success) {
+        throw new AppError('Khong tim thay the loai de xoa cung', 404);
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Xoa cung the loai thanh cong',
       });
     } catch (error) {
       next(error);

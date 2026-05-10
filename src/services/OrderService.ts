@@ -8,6 +8,8 @@ import { Address } from '@entities/Address';
 import { Payment, PaymentMethod, PaymentStatus } from '@entities/Payment';
 import { Cart } from '@entities/Cart';
 import { User, Role } from '@entities/User';
+import { OrderStatusLog } from '@entities/OrderStatusLog';
+import { Review } from '@entities/Review';
 import { IOrderRepository } from '@repositories/interfaces/IOrderRepository';
 import { ICartRepository } from '@repositories/interfaces/ICartRepository';
 import { CreateOrderDto } from '@dtos/order/CreateOrderDto';
@@ -22,6 +24,140 @@ export class OrderService {
     @inject(TOKENS.ORDER_REPOSITORY) private orderRepository: IOrderRepository,
     @inject(TOKENS.CART_REPOSITORY) private cartRepository: ICartRepository
   ) {}
+
+  async requestCancelOrder(orderCode: string, reason: string): Promise<Order> {
+    const normalizedCode = orderCode.trim();
+    const cancelReason = reason.trim();
+
+    if (!normalizedCode) {
+      throw new AppError('Vui lòng nhập mã đơn hàng', 400);
+    }
+
+    if (!cancelReason) {
+      throw new AppError('Vui lòng nhập lý do hủy đơn hàng', 400);
+    }
+
+    if (cancelReason.length > 500) {
+      throw new AppError('Lý do hủy đơn hàng tối đa 500 ký tự', 400);
+    }
+
+    const updatedOrder = await AppDataSource.transaction(async (manager: EntityManager) => {
+      const order = await manager
+        .getRepository(Order)
+        .createQueryBuilder('order')
+        .where('order.orderCode = :orderCode', { orderCode: normalizedCode })
+        .setLock('pessimistic_write')
+        .getOne();
+
+      if (!order) {
+        throw new NotFoundError('Không tìm thấy đơn hàng phù hợp');
+      }
+
+      if (![OrderStatus.PENDING, OrderStatus.PROCESSING].includes(order.status)) {
+        throw new AppError('Chỉ có thể yêu cầu hủy đơn hàng khi đơn còn chờ xác nhận hoặc đang xử lý', 400);
+      }
+
+      const previousStatus = order.status;
+      order.status = OrderStatus.CANCELLED;
+      await manager.save(Order, order);
+
+      const orderWithItems = await manager.findOne(Order, {
+        where: { id: order.id },
+        relations: ['items'],
+      });
+
+      for (const item of orderWithItems?.items ?? []) {
+        const book = await manager.findOne(Book, {
+          where: { id: item.bookId },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (!book) continue;
+
+        await manager.increment(Book, { id: item.bookId }, 'stock', item.quantity);
+        await manager.decrement(Book, { id: item.bookId }, 'soldCount', item.quantity);
+      }
+
+      const log = manager.create(OrderStatusLog, {
+        orderId: order.id,
+        fromStatus: previousStatus,
+        toStatus: OrderStatus.CANCELLED,
+        note: `Khách yêu cầu hủy: ${cancelReason}`,
+        changedBy: null,
+      });
+      await manager.save(OrderStatusLog, log);
+
+      return order;
+    });
+
+    const detail = await this.orderRepository.findById(updatedOrder.id);
+    return detail ?? updatedOrder;
+  }
+
+  async submitOrderReview(params: {
+    orderCode: string;
+    bookId: string;
+    rating: number;
+    comment?: string;
+  }): Promise<Review> {
+    const orderCode = params.orderCode.trim();
+    const bookId = params.bookId.trim();
+    const rating = Number(params.rating);
+    const comment = params.comment?.trim() || null;
+
+    if (!orderCode) {
+      throw new AppError('Vui lòng nhập mã đơn hàng', 400);
+    }
+
+    if (!bookId) {
+      throw new AppError('Vui lòng chọn sách cần đánh giá', 400);
+    }
+
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      throw new AppError('Đánh giá phải từ 1 đến 5 sao', 400);
+    }
+
+    if (comment && comment.length > 1000) {
+      throw new AppError('Nội dung đánh giá tối đa 1000 ký tự', 400);
+    }
+
+    const order = await this.orderRepository.findByOrderCode(orderCode);
+    if (!order) {
+      throw new NotFoundError('Không tìm thấy đơn hàng phù hợp');
+    }
+
+    if (order.status !== OrderStatus.COMPLETED) {
+      throw new AppError('Chỉ có thể đánh giá sau khi đơn hàng đã hoàn thành', 400);
+    }
+
+    const purchasedItem = (order.items || []).find((item) => item.bookId === bookId);
+    if (!purchasedItem) {
+      throw new AppError('Sách này không thuộc đơn hàng cần đánh giá', 400);
+    }
+
+    const reviewRepo = AppDataSource.getRepository(Review);
+    const existingReview = await reviewRepo.findOne({
+      where: {
+        userId: order.userId,
+        bookId,
+      },
+    });
+
+    if (existingReview) {
+      existingReview.rating = rating;
+      existingReview.comment = comment;
+      return reviewRepo.save(existingReview);
+    }
+
+    const review = reviewRepo.create({
+      userId: order.userId,
+      bookId,
+      rating,
+      comment,
+    });
+
+    return reviewRepo.save(review);
+  }
 
   /**
    * POST /orders

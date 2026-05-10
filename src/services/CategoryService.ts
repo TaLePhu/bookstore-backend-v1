@@ -7,12 +7,12 @@ import { Category } from '@entities/Category';
 export class CategoryService {
   constructor(@inject(TOKENS.CATEGORY_REPOSITORY) private categoryRepository: ICategoryRepository) {}
 
-  async getAllCategories(): Promise<Category[]> {
-    return this.categoryRepository.findAll();
+  async getAllCategories(options?: { includeDeleted?: boolean; onlyDeleted?: boolean }): Promise<Category[]> {
+    return this.categoryRepository.findAll(options);
   }
 
-  async getCategoryById(id: string): Promise<Category | null> {
-    return this.categoryRepository.findById(id);
+  async getCategoryById(id: string, includeDeleted = false): Promise<Category | null> {
+    return this.categoryRepository.findById(id, includeDeleted);
   }
 
   async createCategory(data: Partial<Category>): Promise<Category> {
@@ -23,7 +23,15 @@ export class CategoryService {
     return this.categoryRepository.update(id, data);
   }
 
-  async deleteCategory(id: string): Promise<boolean> {
-    return this.categoryRepository.delete(id);
+  async softDeleteCategory(id: string): Promise<boolean> {
+    return this.categoryRepository.softDelete(id);
+  }
+
+  async restoreCategory(id: string): Promise<boolean> {
+    return this.categoryRepository.restore(id);
+  }
+
+  async hardDeleteCategory(id: string): Promise<boolean> {
+    return this.categoryRepository.hardDelete(id);
   }
 }
