@@ -39,6 +39,7 @@ export class BookRepository implements IBookRepository {
     const bookIds = books.map((book) => book.id);
     const stats = await this.repository
       .createQueryBuilder('book')
+      .withDeleted()
       .leftJoin('book.reviews', 'reviews')
       .select('book.id', 'id')
       .addSelect('COUNT(reviews.id)', 'totalReviews')
@@ -54,7 +55,7 @@ export class BookRepository implements IBookRepository {
         image: this.getBookImageUrl(book),
         totalReviews: Number(stat?.totalReviews || 0),
         rating: Number(Number(stat?.rating || 0).toFixed(1)),
-        status: book.stock > 0 ? 'in_stock' : 'out_of_stock',
+        status: book.deletedAt ? 'deleted' : book.stock > 0 ? 'in_stock' : 'out_of_stock',
       } as BookResponse;
     });
   }
@@ -64,7 +65,7 @@ export class BookRepository implements IBookRepository {
   }
 
   async findAllWithFilters(options: BookListOptions): Promise<{ data: BookResponse[]; total: number }> {
-    const { page, limit, sort, categoryId, status } = options;
+    const { page, limit, sort, categoryId, status, includeDeleted, onlyDeleted } = options;
 
     if (sort === 'bestseller') {
       return this.findBestSellerBooksAllTime(page, limit, categoryId);
@@ -75,6 +76,14 @@ export class BookRepository implements IBookRepository {
       .createQueryBuilder('book')
       .leftJoinAndSelect('book.category', 'category')
       .leftJoinAndSelect('book.images', 'images');
+
+    if (includeDeleted || onlyDeleted) {
+      qb.withDeleted();
+    }
+
+    if (onlyDeleted) {
+      qb.andWhere('book.deletedAt IS NOT NULL');
+    }
 
     if (categoryId) {
       qb.andWhere('book.categoryId = :categoryId', { categoryId });
@@ -98,11 +107,20 @@ export class BookRepository implements IBookRepository {
     return { data, total };
   }
 
-  async findById(id: string): Promise<BookResponse | null> {
-    const book = await this.repository.findOne({
-      where: { id },
-      relations: ['category', 'images', 'reviews', 'reviews.user']
-    });
+  async findById(id: string, includeDeleted = false): Promise<BookResponse | null> {
+    const qb = this.repository
+      .createQueryBuilder('book')
+      .leftJoinAndSelect('book.category', 'category')
+      .leftJoinAndSelect('book.images', 'images')
+      .leftJoinAndSelect('book.reviews', 'reviews')
+      .leftJoinAndSelect('reviews.user', 'reviewUser')
+      .where('book.id = :id', { id });
+
+    if (includeDeleted) {
+      qb.withDeleted();
+    }
+
+    const book = await qb.getOne();
 
     if (!book) return null;
 
@@ -115,7 +133,8 @@ export class BookRepository implements IBookRepository {
       ...book,
       image: this.getBookImageUrl(book),
       totalReviews,
-      rating
+      rating,
+      status: book.deletedAt ? 'deleted' : book.stock > 0 ? 'in_stock' : 'out_of_stock',
     } as BookResponse;
   }
 

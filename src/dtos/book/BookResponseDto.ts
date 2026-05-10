@@ -4,5 +4,5 @@ export interface BookResponse extends Book {
   image?: string;
   rating: number;
   totalReviews: number;
-  status?: 'in_stock' | 'out_of_stock';
+  status?: 'in_stock' | 'out_of_stock' | 'deleted';
 }

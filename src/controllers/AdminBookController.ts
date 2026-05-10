@@ -30,6 +30,8 @@ export class AdminBookController {
       const categoryId = typeof req.query.category_id === 'string' ? req.query.category_id.trim() : undefined;
       const rawStatus = typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : '';
       const status = (rawStatus === 'in_stock' || rawStatus === 'out_of_stock') ? rawStatus : undefined;
+      const includeDeleted = req.query.include_deleted === 'true';
+      const onlyDeleted = req.query.only_deleted === 'true';
 
       if (sort && sort !== 'latest' && sort !== 'bestseller') {
         throw new AppError('Lỗi: sort không hợp lệ. Chỉ hỗ trợ latest | bestseller.', 400);
@@ -44,7 +46,9 @@ export class AdminBookController {
         limit,
         sort: sort as 'latest' | 'bestseller' | undefined,
         categoryId,
-        status: status as 'in_stock' | 'out_of_stock' | undefined
+        status: status as 'in_stock' | 'out_of_stock' | undefined,
+        includeDeleted,
+        onlyDeleted,
       });
       
       res.status(200).json({
@@ -69,7 +73,7 @@ export class AdminBookController {
         throw new AppError('Lỗi: ID không đúng định dạng UUID.', 400);
       }
 
-      const book = await this.bookService.getBookById(id);
+      const book = await this.bookService.getBookById(id, true);
       
       res.status(200).json({
         success: true,
@@ -143,10 +147,46 @@ export class AdminBookController {
         throw new AppError('Lỗi: ID không đúng định dạng UUID.', 400);
       }
 
-      await this.bookService.deleteBook(id);
+      await this.bookService.softDeleteBook(id);
       res.status(200).json({
         success: true,
         message: 'Xóa sách thành công',
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  restoreBook = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { id } = req.params;
+
+      if (!isUuid(id)) {
+        throw new AppError('Lá»—i: ID khĂ´ng Ä‘Ăºng Ä‘á»‹nh dáº¡ng UUID.', 400);
+      }
+
+      await this.bookService.restoreBook(id);
+      res.status(200).json({
+        success: true,
+        message: 'KhĂ´i phá»¥c sĂ¡ch thĂ nh cĂ´ng',
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  hardDeleteBook = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { id } = req.params;
+
+      if (!isUuid(id)) {
+        throw new AppError('Lá»—i: ID khĂ´ng Ä‘Ăºng Ä‘á»‹nh dáº¡ng UUID.', 400);
+      }
+
+      await this.bookService.hardDeleteBook(id);
+      res.status(200).json({
+        success: true,
+        message: 'XĂ³a cá»©ng sĂ¡ch thĂ nh cĂ´ng',
       });
     } catch (error) {
       next(error);

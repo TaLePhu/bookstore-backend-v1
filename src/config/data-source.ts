@@ -39,6 +39,7 @@ import { AddBookImagePublicId1778000000000 } from '../migrations/1778000000000-A
 import { CreateOrderStatusLogs1779000000000 } from '../migrations/1779000000000-CreateOrderStatusLogs';
 import { FixEmbeddingsVectorType1779000000001 } from '../migrations/1779000000001-FixEmbeddingsVectorType';
 import { UpdateEmbeddingsVectorDim30721779000000002 } from '../migrations/1779000000002-UpdateEmbeddingsVectorDim3072';
+import { AddBookSoftDelete1779100000000 } from '../migrations/1779100000000-AddBookSoftDelete';
 
 const env = getEnv();
 
@@ -90,6 +91,7 @@ export const AppDataSource = new DataSource({
     CreateOrderStatusLogs1779000000000,
     FixEmbeddingsVectorType1779000000001,
     UpdateEmbeddingsVectorDim30721779000000002,
+    AddBookSoftDelete1779100000000,
   ],
   subscribers: [],
   cache: false,

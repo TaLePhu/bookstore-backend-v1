@@ -4,6 +4,7 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  DeleteDateColumn,
   OneToMany,
   ManyToOne,
   JoinColumn,
@@ -84,6 +85,9 @@ export class Book {
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @DeleteDateColumn({ name: 'deleted_at', nullable: true })
+  deletedAt: Date | null;
 
   // Relations
   @ManyToOne(() => Category, (category) => category.books, { nullable: false })

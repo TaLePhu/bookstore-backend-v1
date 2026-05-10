@@ -9,12 +9,14 @@ export interface BookListOptions {
   sort?: BookListSort;
   categoryId?: string;
   status?: 'in_stock' | 'out_of_stock';
+  includeDeleted?: boolean;
+  onlyDeleted?: boolean;
 }
 
 export interface IBookRepository {
   findAll(page: number, limit: number): Promise<{ data: BookResponse[]; total: number }>;
   findAllWithFilters(options: BookListOptions): Promise<{ data: BookResponse[]; total: number }>;
-  findById(id: string): Promise<BookResponse | null>;
+  findById(id: string, includeDeleted?: boolean): Promise<BookResponse | null>;
   search(query: string, page: number, limit: number): Promise<{ data: BookResponse[]; total: number }>;
   searchKeywordExtended(query: string, page: number, limit: number): Promise<{ data: BookResponse[]; total: number }>;
   searchKeywordIds(query: string, limit: number): Promise<string[]>;

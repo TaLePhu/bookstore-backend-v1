@@ -45,8 +45,28 @@ export class BookService {
     }
   }
 
+  private parseImageIds(value: unknown): string[] {
+    if (!value) return [];
+    if (Array.isArray(value)) return value.map(String).filter(Boolean);
+    if (typeof value !== 'string') return [];
+
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.map(String).filter(Boolean);
+      }
+    } catch {
+      return trimmed.split(',').map((item) => item.trim()).filter(Boolean);
+    }
+
+    return [];
+  }
+
   async getAllBooks(options: BookListOptions): Promise<{ data: BookResponse[]; total: number; page: number; limit: number }> {
-    const { page, limit, sort, categoryId, status } = options;
+    const { page, limit, sort, categoryId, status, includeDeleted, onlyDeleted } = options;
 
     if (categoryId) {
       const category = await this.categoryRepository.findById(categoryId);
@@ -60,13 +80,15 @@ export class BookService {
       limit,
       sort,
       categoryId,
-      status
+      status,
+      includeDeleted,
+      onlyDeleted
     });
     return { data, total, page, limit };
   }
 
-  async getBookById(id: string): Promise<BookResponse> {
-    const cacheKey = `book:detail:${id}`;
+  async getBookById(id: string, includeDeleted = false): Promise<BookResponse> {
+    const cacheKey = includeDeleted ? `book:detail:${id}:with-deleted` : `book:detail:${id}`;
 
     // 1. Kiểm tra cache
     const cachedData = await redisConfig.get(cacheKey);
@@ -75,7 +97,7 @@ export class BookService {
     }
 
     // 2. Nếu miss cache, gọi DB
-    const book = await this.bookRepository.findById(id);
+    const book = await this.bookRepository.findById(id, includeDeleted);
     if (!book) {
       throw new NotFoundError('Sách này không được tìm thấy (Book not found)');
     }
@@ -262,13 +284,16 @@ export class BookService {
       categoryName = category.name;
     }
 
+    const deleteImageIds = this.parseImageIds((dto as any).deleteImageIds);
+    delete (dto as any).deleteImageIds;
+
     const { releaseDate, ...rest } = dto;
     const bookData: Partial<Book> = { ...rest };
     if (releaseDate) {
       bookData.releaseDate = new Date(releaseDate);
     }
 
-    if (!files || files.length === 0) {
+    if ((!files || files.length === 0) && deleteImageIds.length === 0) {
       const updatedBook = await this.bookRepository.update(id, bookData);
 
       if (!updatedBook) {
@@ -277,23 +302,28 @@ export class BookService {
 
       // Xóa cache detail sau khi update
       await redisConfig.del(`book:detail:${id}`);
+      await redisConfig.del(`book:detail:${id}:with-deleted`);
 
       await this.updateEmbeddingForBook(updatedBook, categoryName ?? await this.getCategoryName(updatedBook.categoryId));
       return updatedBook;
     }
 
-    const uploadedImages = await uploadBookImages(files);
-    const imagePayload = uploadedImages.map((img, index) => ({
+    const uploadedImages = await uploadBookImages(files || []);
+    const imagePayload = uploadedImages.map((img) => ({
       url: img.url,
       publicId: img.publicId,
-      isPrimary: index === 0,
+      isPrimary: false,
     }));
 
-    const existingImageRows = await AppDataSource.getRepository(BookImage).find({
-      where: { bookId: id },
-      select: ['publicId'],
-    });
-    const oldPublicIds = existingImageRows
+    const selectedImageRows = deleteImageIds.length > 0
+      ? await AppDataSource.getRepository(BookImage)
+          .createQueryBuilder('image')
+          .addSelect('image.publicId')
+          .where('image.bookId = :bookId', { bookId: id })
+          .andWhere('image.id IN (:...deleteImageIds)', { deleteImageIds })
+          .getMany()
+      : [];
+    const selectedPublicIds = selectedImageRows
       .map((row) => row.publicId)
       .filter((value): value is string => Boolean(value));
 
@@ -308,18 +338,48 @@ export class BookService {
         bookRepo.merge(existingBook, bookData);
         const savedBook = await bookRepo.save(existingBook);
 
-        await imageRepo.delete({ bookId: id });
+        if (deleteImageIds.length > 0) {
+          await imageRepo
+            .createQueryBuilder()
+            .delete()
+            .where('bookId = :bookId', { bookId: id })
+            .andWhere('id IN (:...deleteImageIds)', { deleteImageIds })
+            .execute();
+        }
 
-        const bookImages = imagePayload.map((img) =>
+        const remainingCount = await imageRepo.count({ where: { bookId: id } });
+        if (remainingCount === 0 && imagePayload.length === 0) {
+          throw new ValidationError('Sách cần có ít nhất một ảnh.');
+        }
+
+        const hasPrimary = remainingCount > 0
+          ? await imageRepo.count({ where: { bookId: id, isPrimary: true } }) > 0
+          : false;
+
+        const bookImages = imagePayload.map((img, index) =>
           imageRepo.create({
             bookId: savedBook.id,
             url: img.url,
             publicId: img.publicId || null,
-            isPrimary: img.isPrimary || false,
+            isPrimary: !hasPrimary && index === 0,
           })
         );
 
-        await imageRepo.save(bookImages);
+        if (bookImages.length > 0) {
+          await imageRepo.save(bookImages);
+        }
+
+        const primaryCount = await imageRepo.count({ where: { bookId: id, isPrimary: true } });
+        if (primaryCount === 0) {
+          const firstImage = await imageRepo.findOne({
+            where: { bookId: id },
+            order: { createdAt: 'ASC' },
+          });
+          if (firstImage) {
+            firstImage.isPrimary = true;
+            await imageRepo.save(firstImage);
+          }
+        }
 
         return savedBook;
       });
@@ -330,13 +390,14 @@ export class BookService {
       }
 
       try {
-        await deleteCloudinaryImages(oldPublicIds);
+        await deleteCloudinaryImages(selectedPublicIds);
       } catch (cleanupError) {
-        console.warn('Không thể xóa ảnh Cloudinary cũ sau khi cập nhật sách', cleanupError);
+        console.warn('Không thể xóa ảnh Cloudinary sau khi cập nhật sách', cleanupError);
       }
 
       // Xóa cache detail sau khi update
       await redisConfig.del(`book:detail:${id}`);
+      await redisConfig.del(`book:detail:${id}:with-deleted`);
 
       await this.updateEmbeddingForBook(updatedBook, categoryName ?? await this.getCategoryName(updatedBook.categoryId));
       return updatedBook;
@@ -351,12 +412,58 @@ export class BookService {
 
   }
 
-  async deleteBook(id: string): Promise<void> {
+  async softDeleteBook(id: string): Promise<void> {
+    const bookRepo = AppDataSource.getRepository(Book);
+    const book = await bookRepo
+      .createQueryBuilder('book')
+      .withDeleted()
+      .where('book.id = :id', { id })
+      .getOne();
+
+    if (!book) {
+      throw new NotFoundError('SĂ¡ch khĂ´ng tá»“n táº¡i');
+    }
+
+    if (book.deletedAt) {
+      throw new ValidationError('SĂ¡ch Ä‘Ă£ Ä‘Æ°á»£c xĂ³a má»m trá»›c Ä‘Ă³');
+    }
+
+    await bookRepo.softDelete({ id });
+    await redisConfig.del(`book:detail:${id}`);
+    await redisConfig.del(`book:detail:${id}:with-deleted`);
+  }
+
+  async restoreBook(id: string): Promise<void> {
+    const bookRepo = AppDataSource.getRepository(Book);
+    const book = await bookRepo
+      .createQueryBuilder('book')
+      .withDeleted()
+      .where('book.id = :id', { id })
+      .getOne();
+
+    if (!book) {
+      throw new NotFoundError('SĂ¡ch khĂ´ng tá»“n táº¡i');
+    }
+
+    if (!book.deletedAt) {
+      throw new ValidationError('SĂ¡ch chÆ°a bá»‹ xĂ³a má»m');
+    }
+
+    await bookRepo.restore({ id });
+    await redisConfig.del(`book:detail:${id}`);
+    await redisConfig.del(`book:detail:${id}:with-deleted`);
+  }
+
+  async hardDeleteBook(id: string): Promise<void> {
     const bookRepo = AppDataSource.getRepository(Book);
     const orderItemRepo = AppDataSource.getRepository(OrderItem);
     const imageRepo = AppDataSource.getRepository(BookImage);
 
-    const book = await bookRepo.findOne({ where: { id } });
+    const book = await bookRepo
+      .createQueryBuilder('book')
+      .withDeleted()
+      .where('book.id = :id', { id })
+      .getOne();
     if (!book) {
       throw new NotFoundError('Sách không tồn tại');
     }
@@ -380,6 +487,7 @@ export class BookService {
     });
 
     await redisConfig.del(`book:detail:${id}`);
+    await redisConfig.del(`book:detail:${id}:with-deleted`);
 
     try {
       await deleteCloudinaryImages(publicIds);

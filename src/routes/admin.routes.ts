@@ -166,6 +166,8 @@ router.put(
  * DELETE /admin/books/:id
  * Xóa sách chưa phát sinh đơn hàng
  */
+router.patch('/books/:id/restore', adminBookController.restoreBook);
+router.delete('/books/:id/hard', adminBookController.hardDeleteBook);
 router.delete('/books/:id', adminBookController.deleteBook);
 
 export default router;
