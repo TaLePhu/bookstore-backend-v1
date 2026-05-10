@@ -72,6 +72,7 @@ export interface EnvConfig {
   gemini: {
     apiKey: string;
     embeddingModel: string;
+    generationModel: string;
     apiVersion: string;
   };
 }
@@ -142,6 +143,7 @@ function parseEnv(): EnvConfig {
     gemini: {
       apiKey: process.env['GEMINI_API_KEY'] || '',
       embeddingModel: process.env['GEMINI_EMBEDDING_MODEL'] || 'text-embedding-004',
+      generationModel: process.env['GEMINI_GENERATION_MODEL'] || 'gemini-2.5-flash',
       apiVersion: process.env['GEMINI_API_VERSION'] || 'v1',
     },
   };

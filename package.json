@@ -4,9 +4,9 @@
   "description": "BookStore Backend - Production-ready Node.js + Express + TypeScript",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "ts-node -r tsconfig-paths/register src/server.ts",
+    "dev": "node --use-system-ca -r ts-node/register -r tsconfig-paths/register src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "node --use-system-ca dist/server.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
@@ -17,7 +17,7 @@
     "db:seed": "ts-node -r tsconfig-paths/register src/seeds/seed.ts",
     "db:reset-seed": "ts-node -r tsconfig-paths/register src/seeds/reset-and-seed.ts",
     "db:backfill-embeddings": "ts-node -r tsconfig-paths/register src/seeds/backfill-embeddings.ts",
-    "db:list-gemini-models": "ts-node -r tsconfig-paths/register src/seeds/list-gemini-models.ts"
+    "db:list-gemini-models": "node --use-system-ca -r ts-node/register -r tsconfig-paths/register src/seeds/list-gemini-models.ts"
   },
   "keywords": [
     "bookstore",

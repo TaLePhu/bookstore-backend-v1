@@ -39,8 +39,18 @@ async function listModels(): Promise<void> {
     .map((model) => model.name)
     .filter((name): name is string => Boolean(name));
 
+  const generateModels = models
+    .filter((model) => model.supportedGenerationMethods?.includes('generateContent'))
+    .map((model) => model.name)
+    .filter((name): name is string => Boolean(name));
+
   console.log('Models supporting embedContent:');
   for (const name of embedModels) {
+    console.log(`- ${name}`);
+  }
+
+  console.log('\nModels supporting generateContent:');
+  for (const name of generateModels) {
     console.log(`- ${name}`);
   }
 }
