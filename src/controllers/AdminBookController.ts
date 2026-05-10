@@ -134,4 +134,22 @@ export class AdminBookController {
       next(error);
     }
   };
+
+  deleteBook = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { id } = req.params;
+
+      if (!isUuid(id)) {
+        throw new AppError('Lỗi: ID không đúng định dạng UUID.', 400);
+      }
+
+      await this.bookService.deleteBook(id);
+      res.status(200).json({
+        success: true,
+        message: 'Xóa sách thành công',
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 }

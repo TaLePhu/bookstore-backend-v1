@@ -15,15 +15,19 @@ import { AdminBookController } from '@controllers/AdminBookController';
 import { CreateBookDto } from '@dtos/book/CreateBookDto';
 import { UpdateBookDto } from '@dtos/book/UpdateBookDto';
 import { uploadBookImages, requireBookImages } from '@middlewares/book-image-upload.middleware';
+import { AdminDashboardController } from '@controllers/AdminDashboardController';
 
 const router = Router();
 const adminUserController = container.resolve(AdminUserController);
 const adminCategoryController = container.resolve(AdminCategoryController);
 const adminBookController = container.resolve(AdminBookController);
+const adminDashboardController = container.resolve(AdminDashboardController);
 
 // ─── Bảo vệ toàn bộ route: phải đăng nhập & phải là ADMIN ─────────────────
 router.use(authMiddleware);
 router.use(roleGuard(Role.ADMIN));
+
+router.get('/dashboard', adminDashboardController.getDashboard);
 
 // ─── Quản lý tài khoản ──────────────────────────────────────────────────────
 
@@ -157,5 +161,11 @@ router.put(
   validateDto(UpdateBookDto),
   adminBookController.updateBook,
 );
+
+/**
+ * DELETE /admin/books/:id
+ * Xóa sách chưa phát sinh đơn hàng
+ */
+router.delete('/books/:id', adminBookController.deleteBook);
 
 export default router;

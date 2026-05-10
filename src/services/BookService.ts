@@ -9,6 +9,7 @@ import { CreateBookDto } from '@dtos/book/CreateBookDto';
 import { UpdateBookDto } from '@dtos/book/UpdateBookDto';
 import { Book } from '@entities/Book';
 import { BookImage } from '@entities/BookImage';
+import { OrderItem } from '@entities/OrderItem';
 import { AppDataSource } from '@config/data-source';
 import { uploadBookImages, deleteCloudinaryImages } from '@utils/cloudinary';
 import { EmbeddingSearchService } from '@services/EmbeddingSearchService';
@@ -348,6 +349,43 @@ export class BookService {
       throw error;
     }
 
+  }
+
+  async deleteBook(id: string): Promise<void> {
+    const bookRepo = AppDataSource.getRepository(Book);
+    const orderItemRepo = AppDataSource.getRepository(OrderItem);
+    const imageRepo = AppDataSource.getRepository(BookImage);
+
+    const book = await bookRepo.findOne({ where: { id } });
+    if (!book) {
+      throw new NotFoundError('Sách không tồn tại');
+    }
+
+    const orderItemCount = await orderItemRepo.count({ where: { bookId: id } });
+    if (orderItemCount > 0) {
+      throw new ValidationError('Không thể xóa sách đã phát sinh đơn hàng. Hãy đặt tồn kho về 0 nếu muốn ngừng bán.');
+    }
+
+    const imageRows = await imageRepo.find({
+      where: { bookId: id },
+      select: ['publicId'],
+    });
+    const publicIds = imageRows
+      .map((row) => row.publicId)
+      .filter((value): value is string => Boolean(value));
+
+    await AppDataSource.transaction(async (manager) => {
+      await manager.delete(BookImage, { bookId: id });
+      await manager.delete(Book, { id });
+    });
+
+    await redisConfig.del(`book:detail:${id}`);
+
+    try {
+      await deleteCloudinaryImages(publicIds);
+    } catch (error) {
+      console.warn('Không thể xóa ảnh Cloudinary sau khi xóa sách', error);
+    }
   }
 }
 
