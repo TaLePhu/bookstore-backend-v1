@@ -49,14 +49,14 @@ export class OrderRepository implements IOrderRepository {
     const skip = (page - 1) * limit;
 
     const qb = this.repository
-      .createQueryBuilder('order')
-      .leftJoin('order.user', 'user')
-      .leftJoin('order.items', 'item')
-      .select('order.id', 'id')
-      .addSelect('order.orderCode', 'orderCode')
-      .addSelect('order.createdAt', 'createdAt')
-      .addSelect('order.totalAmount', 'totalAmount')
-      .addSelect('order.status', 'status')
+      .createQueryBuilder('order_entity')
+      .leftJoin('order_entity.user', 'user')
+      .leftJoin('order_entity.items', 'item')
+      .select('order_entity.id', 'id')
+      .addSelect('order_entity.orderCode', 'orderCode')
+      .addSelect('order_entity.createdAt', 'createdAt')
+      .addSelect('order_entity.totalAmount', 'totalAmount')
+      .addSelect('order_entity.status', 'status')
       .addSelect('user.fullName', 'customerName')
       .addSelect('user.userName', 'customerUserName')
       .addSelect('user.email', 'customerEmail')
@@ -65,21 +65,21 @@ export class OrderRepository implements IOrderRepository {
         `(
           SELECT COUNT(1)
           FROM order_status_logs cancel_log
-          WHERE cancel_log.order_id = order.id
+          WHERE cancel_log.order_id = order_entity.id
             AND cancel_log.from_status = cancel_log.to_status
             AND cancel_log.changed_by IS NULL
-            AND order.status IN ('PENDING', 'PROCESSING')
+            AND order_entity.status IN ('PENDING', 'PROCESSING')
         )`,
         'cancelRequested'
       )
-      .groupBy('order.id')
+      .groupBy('order_entity.id')
       .addGroupBy('user.id')
-      .orderBy('order.createdAt', 'DESC')
+      .orderBy('order_entity.createdAt', 'DESC')
       .skip(skip)
       .take(limit);
 
     if (status) {
-      qb.andWhere('order.status = :status', { status });
+      qb.andWhere('order_entity.status = :status', { status });
     }
 
     const rows = await qb.getRawMany<AdminOrderListItem>();
@@ -137,15 +137,15 @@ export class OrderRepository implements IOrderRepository {
   }): Promise<CustomerOrderHistoryItem[]> {
     const { email, phone } = params;
     const qb = this.repository
-      .createQueryBuilder('order')
-      .leftJoin('order.user', 'user')
-      .leftJoin('order.address', 'address')
-      .select('order.id', 'id')
-      .addSelect('order.orderCode', 'orderCode')
-      .addSelect('order.createdAt', 'createdAt')
-      .addSelect('order.totalAmount', 'totalAmount')
-      .addSelect('order.status', 'status')
-      .orderBy('order.createdAt', 'DESC');
+      .createQueryBuilder('order_entity')
+      .leftJoin('order_entity.user', 'user')
+      .leftJoin('order_entity.address', 'address')
+      .select('order_entity.id', 'id')
+      .addSelect('order_entity.orderCode', 'orderCode')
+      .addSelect('order_entity.createdAt', 'createdAt')
+      .addSelect('order_entity.totalAmount', 'totalAmount')
+      .addSelect('order_entity.status', 'status')
+      .orderBy('order_entity.createdAt', 'DESC');
 
     if (email && phone) {
       qb.where('(user.email = :email OR address.phone = :phone)', { email, phone });

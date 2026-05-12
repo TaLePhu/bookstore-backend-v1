@@ -136,9 +136,9 @@ export class AdminUserRepository implements IAdminUserRepository {
     const result = await this.repository
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.userAdvance', 'userAdvance')
-      .leftJoin('user.orders', 'order')
-      .addSelect('COUNT(order.id)', 'totalOrders')
-      .addSelect('COALESCE(SUM(order.totalAmount), 0)', 'totalSpent')
+      .leftJoin('user.orders', 'order_entity')
+      .addSelect('COUNT(order_entity.id)', 'totalOrders')
+      .addSelect('COALESCE(SUM(order_entity.totalAmount), 0)', 'totalSpent')
       .where('user.id = :id', { id })
       .groupBy('user.id')
       .addGroupBy('userAdvance.id')

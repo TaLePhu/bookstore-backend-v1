@@ -44,8 +44,8 @@ export class OrderService {
     const updatedOrder = await AppDataSource.transaction(async (manager: EntityManager) => {
       const order = await manager
         .getRepository(Order)
-        .createQueryBuilder('order')
-        .where('order.orderCode = :orderCode', { orderCode: normalizedCode })
+        .createQueryBuilder('order_entity')
+        .where('order_entity.orderCode = :orderCode', { orderCode: normalizedCode })
         .setLock('pessimistic_write')
         .getOne();
 

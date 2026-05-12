@@ -222,10 +222,10 @@ export class BookRepository implements IBookRepository {
     const baseQb = this.repository
       .createQueryBuilder('book')
       .innerJoin('book.orderItems', 'orderItem')
-      .innerJoin('orderItem.order', 'order')
+      .innerJoin('orderItem.order', 'order_entity')
       .select('book.id', 'bookId')
       .addSelect('SUM(orderItem.quantity)', 'totalSold')
-      .where('order.status = :completedStatus', { completedStatus: OrderStatus.COMPLETED });
+      .where('order_entity.status = :completedStatus', { completedStatus: OrderStatus.COMPLETED });
 
     if (categoryId) {
       baseQb.andWhere('book.categoryId = :categoryId', { categoryId });
@@ -233,7 +233,7 @@ export class BookRepository implements IBookRepository {
 
     baseQb.groupBy('book.id')
       .orderBy('SUM(orderItem.quantity)', 'DESC')
-      .addOrderBy('MAX(order.createdAt)', 'DESC');
+      .addOrderBy('MAX(order_entity.createdAt)', 'DESC');
 
     const totalRows = await baseQb.clone().getRawMany<{ bookId: string }>();
     const total = totalRows.length;

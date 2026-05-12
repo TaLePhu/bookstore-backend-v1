@@ -79,8 +79,8 @@ export class AdminOrderService {
     const updatedOrder = await AppDataSource.transaction(async (manager) => {
       const order = await manager
         .getRepository(Order)
-        .createQueryBuilder('order')
-        .where('order.id = :orderId', { orderId })
+        .createQueryBuilder('order_entity')
+        .where('order_entity.id = :orderId', { orderId })
         .setLock('pessimistic_write')
         .getOne();
 

@@ -51,9 +51,9 @@ export class AdminDashboardService {
     const [revenueRow, totalOrders, totalCustomers, totalBooks, revenueData, categoryData, recentOrders] =
       await Promise.all([
         orderRepo
-          .createQueryBuilder('order')
-          .select('COALESCE(SUM(order.totalAmount), 0)', 'totalRevenue')
-          .where('order.status = :status', { status: OrderStatus.COMPLETED })
+          .createQueryBuilder('order_entity')
+          .select('COALESCE(SUM(order_entity.totalAmount), 0)', 'totalRevenue')
+          .where('order_entity.status = :status', { status: OrderStatus.COMPLETED })
           .getRawOne<{ totalRevenue: string }>(),
         orderRepo.count(),
         userRepo.count({ where: { role: Role.CUSTOMER } }),
@@ -87,17 +87,17 @@ export class AdminDashboardService {
 
     const start = months[0].date;
     const rows = await orderRepo
-      .createQueryBuilder('order')
-      .select(`DATE_TRUNC('month', order.createdAt)`, 'month')
-      .addSelect('COUNT(order.id)', 'orders')
+      .createQueryBuilder('order_entity')
+      .select(`DATE_TRUNC('month', order_entity.createdAt)`, 'month')
+      .addSelect('COUNT(order_entity.id)', 'orders')
       .addSelect(
-        `COALESCE(SUM(CASE WHEN order.status = :completed THEN order.totalAmount ELSE 0 END), 0)`,
+        `COALESCE(SUM(CASE WHEN order_entity.status = :completed THEN order_entity.totalAmount ELSE 0 END), 0)`,
         'revenue'
       )
-      .where('order.createdAt >= :start', { start })
+      .where('order_entity.createdAt >= :start', { start })
       .setParameter('completed', OrderStatus.COMPLETED)
-      .groupBy(`DATE_TRUNC('month', order.createdAt)`)
-      .orderBy(`DATE_TRUNC('month', order.createdAt)`, 'ASC')
+      .groupBy(`DATE_TRUNC('month', order_entity.createdAt)`)
+      .orderBy(`DATE_TRUNC('month', order_entity.createdAt)`, 'ASC')
       .getRawMany<{ month: Date; orders: string; revenue: string }>();
 
     return months.map((month) => {
@@ -140,17 +140,17 @@ export class AdminDashboardService {
   private async getRecentOrders(): Promise<AdminRecentOrderItem[]> {
     const orderRepo = AppDataSource.getRepository(Order);
     const rows = await orderRepo
-      .createQueryBuilder('order')
-      .leftJoin('order.user', 'user')
-      .select('order.id', 'id')
-      .addSelect('order.orderCode', 'orderCode')
-      .addSelect('order.totalAmount', 'totalAmount')
-      .addSelect('order.status', 'status')
-      .addSelect('order.createdAt', 'createdAt')
+      .createQueryBuilder('order_entity')
+      .leftJoin('order_entity.user', 'user')
+      .select('order_entity.id', 'id')
+      .addSelect('order_entity.orderCode', 'orderCode')
+      .addSelect('order_entity.totalAmount', 'totalAmount')
+      .addSelect('order_entity.status', 'status')
+      .addSelect('order_entity.createdAt', 'createdAt')
       .addSelect('user.fullName', 'fullName')
       .addSelect('user.userName', 'userName')
       .addSelect('user.email', 'email')
-      .orderBy('order.createdAt', 'DESC')
+      .orderBy('order_entity.createdAt', 'DESC')
       .limit(5)
       .getRawMany<{
         id: string;
