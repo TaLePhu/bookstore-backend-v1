@@ -56,6 +56,21 @@ export class AdminUserService {
     };
   }
 
+  async createUser(input: CreateAdminUserInput): Promise<AdminUserListItem> {
+    const passwordHash = await HashHelper.hash(input.password);
+    const user = await this.adminUserRepository.createUser({
+      userName: input.userName.trim(),
+      fullName: input.fullName?.trim() || null,
+      email: input.email.trim().toLowerCase(),
+      phone: input.phone?.trim() || undefined,
+      passwordHash,
+      role: input.role,
+      isVerified: input.isVerified ?? true,
+    });
+
+    return this.mapToListItem(user);
+  }
+
   // ── PATCH /admin/users/:id/status ──────────────────────────────────────────
   async updateLockStatus(
     id: string,

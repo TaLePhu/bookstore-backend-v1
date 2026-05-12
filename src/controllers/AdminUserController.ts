@@ -4,6 +4,7 @@ import { AdminUserService } from '@services/AdminUserService';
 import { AdminUserFilter } from '@repositories/interfaces/IAdminUserRepository';
 import { Role } from '@entities/User';
 import { sendSuccess } from '@utils/response';
+import { CreateAdminUserDto } from '@dtos/admin/CreateAdminUserDto';
 
 @injectable()
 export class AdminUserController {
@@ -30,6 +31,17 @@ export class AdminUserController {
       const result = await this.adminUserService.listUsers(filter);
 
       sendSuccess(res, result, 'Lấy danh sách người dùng thành công');
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  createUser = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const dto = req.body as CreateAdminUserDto;
+      const user = await this.adminUserService.createUser(dto);
+
+      sendSuccess(res, user, 'Tạo tài khoản thành công', 201);
     } catch (error) {
       next(error);
     }

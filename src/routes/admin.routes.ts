@@ -8,6 +8,7 @@ import { Role } from '@entities/User';
 import { UpdateUserStatusDto } from '@dtos/admin/UpdateUserStatusDto';
 import { UpdateUserRoleDto } from '@dtos/admin/UpdateUserRoleDto';
 import { ResetPasswordDto } from '@dtos/admin/ResetPasswordDto';
+import { CreateAdminUserDto } from '@dtos/admin/CreateAdminUserDto';
 import { AdminCategoryController } from '@controllers/AdminCategoryController';
 import { CreateCategoryDto } from '@dtos/category/CreateCategoryDto';
 import { UpdateCategoryDto } from '@dtos/category/UpdateCategoryDto';
@@ -37,6 +38,7 @@ router.get('/dashboard', adminDashboardController.getDashboard);
  * Query: role?, email?, full_name?, page?, limit?
  */
 router.get('/users', adminUserController.listUsers);
+router.post('/users', validateDto(CreateAdminUserDto), adminUserController.createUser);
 
 /**
  * PATCH /admin/users/:id/status
