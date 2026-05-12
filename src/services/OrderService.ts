@@ -18,6 +18,27 @@ import { EntityManager } from 'typeorm';
 import { TOKENS } from '@config/container';
 import { emailQueue } from '@config/queue';
 
+const isCustomerCancelRequestLog = (log: OrderStatusLog): boolean =>
+  log.changedBy === null &&
+  log.fromStatus === log.toStatus &&
+  Boolean(
+    log.note?.includes('yêu cầu hủy') ||
+      log.note?.includes('yĂªu cáº§u há»§y') ||
+      log.note?.includes('yÄ‚Âªu cĂ¡ÂºÂ§u hĂ¡Â»Â§y') ||
+      log.note?.startsWith('Khách yêu cầu hủy:') ||
+      log.note?.startsWith('KhĂ¡ch yĂªu cáº§u há»§y:') ||
+      log.note?.startsWith('KhÄ‚Â¡ch yÄ‚Âªu cĂ¡ÂºÂ§u hĂ¡Â»Â§y:')
+  );
+
+const isCancelRequestResolutionLog = (log: OrderStatusLog): boolean =>
+  log.changedBy !== null &&
+  (log.toStatus === OrderStatus.CANCELLED ||
+    Boolean(
+      log.fromStatus === log.toStatus &&
+        (log.note?.startsWith('Admin từ chối yêu cầu hủy:') ||
+          log.note?.startsWith('Admin tu choi yeu cau huy:'))
+    ));
+
 @injectable()
 export class OrderService {
   constructor(
@@ -57,12 +78,14 @@ export class OrderService {
         throw new AppError('Chỉ có thể yêu cầu hủy đơn hàng khi đơn còn chờ xác nhận hoặc đang xử lý', 400);
       }
 
-      const existingRequest = await manager.findOne(OrderStatusLog, {
-        where: { orderId: order.id, fromStatus: order.status, toStatus: order.status },
+      const logs = await manager.find(OrderStatusLog, {
+        where: { orderId: order.id },
         order: { createdAt: 'DESC' },
       });
+      const latestRequest = logs.find(isCustomerCancelRequestLog);
+      const latestResolution = logs.find(isCancelRequestResolutionLog);
 
-      if (existingRequest?.note?.startsWith('KhĂ¡ch yĂªu cáº§u há»§y:')) {
+      if (latestRequest && (!latestResolution || latestRequest.createdAt > latestResolution.createdAt)) {
         throw new AppError('Đơn hàng này đã có yêu cầu hủy đang chờ xử lý', 400);
       }
 

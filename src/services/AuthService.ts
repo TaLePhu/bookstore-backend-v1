@@ -5,6 +5,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { RegisterDto } from '@dtos/auth/RegisterDto';
 import { LoginDto } from '@dtos/auth/LoginDto';
 import { VerifyEmailDto } from '@dtos/auth/VerifyEmailDto';
+import { ForgotPasswordDto } from '@dtos/auth/ForgotPasswordDto';
+import { VerifyPasswordResetCodeDto } from '@dtos/auth/VerifyPasswordResetCodeDto';
+import { ResetPasswordDto } from '@dtos/auth/ResetPasswordDto';
 import { IUserRepository } from '@repositories/interfaces/IUserRepository';
 import { IRefreshTokenRepository } from '@repositories/interfaces/IRefreshTokenRepository';
 import { TOKENS } from '@config/container';
@@ -33,6 +36,8 @@ export interface AuthResponse {
 export class AuthService {
   private static readonly VERIFY_CODE_TTL_SECONDS = 15 * 60;
   private static readonly VERIFY_MAX_ATTEMPTS = 5;
+  private static readonly RESET_CODE_TTL_SECONDS = 15 * 60;
+  private static readonly RESET_MAX_ATTEMPTS = 5;
 
   constructor(
     @inject(TOKENS.USER_REPOSITORY) private userRepository: IUserRepository,
@@ -42,6 +47,53 @@ export class AuthService {
   async checkEmailExists(email: string): Promise<{ exists: boolean }> {
     const user = await this.userRepository.findByEmail(email.trim().toLowerCase());
     return { exists: !!user };
+  }
+
+  async requestPasswordReset(data: ForgotPasswordDto): Promise<{ message: string }> {
+    const email = data.email.trim().toLowerCase();
+    const user = await this.userRepository.findByEmail(email);
+    if (!user) {
+      throw new NotFoundError('Không tìm thấy tài khoản với email này');
+    }
+
+    await this.sendPasswordResetCode(email);
+    return {
+      message: 'Đã gửi mã đặt lại mật khẩu. Vui lòng kiểm tra email.',
+    };
+  }
+
+  async verifyPasswordResetCode(data: VerifyPasswordResetCodeDto): Promise<{ message: string }> {
+    const email = data.email.trim().toLowerCase();
+    await this.assertPasswordResetCode(email, data.code);
+    await redisConfig.setex(`reset_verified:${email}`, AuthService.RESET_CODE_TTL_SECONDS, data.code);
+
+    return {
+      message: 'Mã xác thực hợp lệ. Vui lòng đặt mật khẩu mới.',
+    };
+  }
+
+  async resetPassword(data: ResetPasswordDto): Promise<{ message: string }> {
+    const email = data.email.trim().toLowerCase();
+    const user = await this.userRepository.findByEmail(email);
+    if (!user) {
+      throw new NotFoundError('Không tìm thấy tài khoản với email này');
+    }
+
+    const verifiedCode = await redisConfig.get(`reset_verified:${email}`);
+    if (verifiedCode !== data.code) {
+      await this.assertPasswordResetCode(email, data.code);
+    }
+
+    const passwordHash = await HashHelper.hash(data.newPassword);
+    await this.userRepository.update(user.id, { passwordHash } as any);
+    await redisConfig.del(`reset_code:${email}`);
+    await redisConfig.del(`reset_attempts:${email}`);
+    await redisConfig.del(`reset_verified:${email}`);
+    await this.refreshTokenRepository.revokeAllByUserId(user.id);
+
+    return {
+      message: 'Đặt lại mật khẩu thành công. Vui lòng đăng nhập bằng mật khẩu mới.',
+    };
   }
 
   async register(data: RegisterDto): Promise<{ message: string }> {
@@ -341,6 +393,41 @@ export class AuthService {
       to: email,
       subject: 'Xác thực tài khoản BookStore',
       html: `<h1>Mã xác thực của bạn</h1><p>Mã của bạn là: <strong style="font-size:24px;">${verificationCode}</strong></p><p>Mã này sẽ hết hạn trong 15 phút.</p>`,
+    });
+  }
+
+  private async assertPasswordResetCode(email: string, code: string): Promise<void> {
+    const attemptsKey = `reset_attempts:${email}`;
+    const storedCode = await redisConfig.get(`reset_code:${email}`);
+
+    if (!storedCode || storedCode !== code) {
+      const attempts = await redisConfig.incr(attemptsKey);
+      if (attempts === 1) {
+        await redisConfig.expire(attemptsKey, AuthService.RESET_CODE_TTL_SECONDS);
+      }
+
+      if (attempts >= AuthService.RESET_MAX_ATTEMPTS) {
+        await redisConfig.del(`reset_code:${email}`);
+        await redisConfig.del(attemptsKey);
+        await redisConfig.del(`reset_verified:${email}`);
+        throw new UnauthorizedError('Bạn đã nhập sai mã quá số lần cho phép. Vui lòng yêu cầu mã mới.');
+      }
+
+      throw new UnauthorizedError('Mã xác thực không hợp lệ hoặc đã hết hạn');
+    }
+  }
+
+  private async sendPasswordResetCode(email: string): Promise<void> {
+    const resetCode = randomInt(100000, 1000000).toString();
+
+    await redisConfig.setex(`reset_code:${email}`, AuthService.RESET_CODE_TTL_SECONDS, resetCode);
+    await redisConfig.del(`reset_attempts:${email}`);
+    await redisConfig.del(`reset_verified:${email}`);
+
+    await emailQueue.add('sendPasswordResetCode', {
+      to: email,
+      subject: 'Mã đặt lại mật khẩu BookStore',
+      html: `<h1>Đặt lại mật khẩu</h1><p>Mã đặt lại mật khẩu của bạn là: <strong style="font-size:24px;">${resetCode}</strong></p><p>Mã này sẽ hết hạn trong 15 phút.</p>`,
     });
   }
 }

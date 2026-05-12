@@ -6,6 +6,9 @@ import { LoginDto } from '@dtos/auth/LoginDto';
 import { RefreshTokenDto } from '@dtos/auth/RefreshTokenDto';
 import { VerifyEmailDto } from '@dtos/auth/VerifyEmailDto';
 import { ResendVerificationCodeDto } from '@dtos/auth/ResendVerificationCodeDto';
+import { ForgotPasswordDto } from '@dtos/auth/ForgotPasswordDto';
+import { VerifyPasswordResetCodeDto } from '@dtos/auth/VerifyPasswordResetCodeDto';
+import { ResetPasswordDto } from '@dtos/auth/ResetPasswordDto';
 import { sendSuccess, sendError } from '@utils/response';
 import { asyncWrapper } from '@utils/async-wrapper';
 
@@ -39,6 +42,24 @@ export class AuthController {
     const resendDto: ResendVerificationCodeDto = req.body;
     const result = await this.authService.resendVerificationCode(resendDto);
     return sendSuccess(res, result, 'Verification code resent successfully', 200);
+  });
+
+  forgotPassword = asyncWrapper(async (req: Request, res: Response) => {
+    const dto: ForgotPasswordDto = req.body;
+    const result = await this.authService.requestPasswordReset(dto);
+    return sendSuccess(res, result, 'Password reset code sent successfully', 200);
+  });
+
+  verifyPasswordResetCode = asyncWrapper(async (req: Request, res: Response) => {
+    const dto: VerifyPasswordResetCodeDto = req.body;
+    const result = await this.authService.verifyPasswordResetCode(dto);
+    return sendSuccess(res, result, 'Password reset code verified successfully', 200);
+  });
+
+  resetPassword = asyncWrapper(async (req: Request, res: Response) => {
+    const dto: ResetPasswordDto = req.body;
+    const result = await this.authService.resetPassword(dto);
+    return sendSuccess(res, result, 'Password reset successfully', 200);
   });
 
   login = asyncWrapper(async (req: Request, res: Response) => {

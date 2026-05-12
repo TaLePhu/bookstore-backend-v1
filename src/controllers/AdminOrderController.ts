@@ -4,6 +4,7 @@ import { AdminOrderService } from '@services/AdminOrderService';
 import { OrderStatus } from '@entities/Order';
 import { AppError } from '@utils/errors';
 import { UpdateOrderStatusDto } from '@dtos/admin/UpdateOrderStatusDto';
+import { RejectCancelRequestDto } from '@dtos/admin/RejectCancelRequestDto';
 
 function getSafePagination(pageValue: unknown, limitValue: unknown): { page: number; limit: number } {
   const parsedPage = parseInt(String(pageValue ?? ''), 10);
@@ -106,6 +107,27 @@ export class AdminOrderController {
         success: true,
         data: order,
         message: 'Cap nhat trang thai don hang thanh cong',
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  rejectCancelRequest = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { id } = req.params;
+      if (!isUuid(id)) {
+        throw new AppError('ID khong dung dinh dang UUID', 400);
+      }
+
+      const dto = req.body as RejectCancelRequestDto;
+      const staffId = req.user!.userId;
+      const order = await this.adminOrderService.rejectCancelRequest(id, staffId, dto.note);
+
+      res.status(200).json({
+        success: true,
+        data: order,
+        message: 'Tu choi yeu cau huy don thanh cong',
       });
     } catch (error) {
       next(error);

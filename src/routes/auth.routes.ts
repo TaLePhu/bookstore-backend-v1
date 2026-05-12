@@ -9,6 +9,9 @@ import { LoginDto } from '@dtos/auth/LoginDto';
 import { RefreshTokenDto } from '@dtos/auth/RefreshTokenDto';
 import { VerifyEmailDto } from '@dtos/auth/VerifyEmailDto';
 import { ResendVerificationCodeDto } from '@dtos/auth/ResendVerificationCodeDto';
+import { ForgotPasswordDto } from '@dtos/auth/ForgotPasswordDto';
+import { VerifyPasswordResetCodeDto } from '@dtos/auth/VerifyPasswordResetCodeDto';
+import { ResetPasswordDto } from '@dtos/auth/ResetPasswordDto';
 
 const router = Router();
 const authController = container.resolve(AuthController);
@@ -63,6 +66,9 @@ router.get('/check-email', authController.checkEmail);
 router.post('/register', authWriteLimiter, validateDto(RegisterDto), authController.register);
 router.post('/verify-email', verifyEmailLimiter, validateDto(VerifyEmailDto), authController.verifyEmail);
 router.post('/resend-code', authWriteLimiter, validateDto(ResendVerificationCodeDto), authController.resendVerificationCode);
+router.post('/forgot-password', authWriteLimiter, validateDto(ForgotPasswordDto), authController.forgotPassword);
+router.post('/verify-reset-code', verifyEmailLimiter, validateDto(VerifyPasswordResetCodeDto), authController.verifyPasswordResetCode);
+router.post('/reset-password', authWriteLimiter, validateDto(ResetPasswordDto), authController.resetPassword);
 router.post('/login', authWriteLimiter, validateDto(LoginDto), authController.login);
 router.post('/refresh-token', authWriteLimiter, validateDto(RefreshTokenDto), authController.refreshToken);
 

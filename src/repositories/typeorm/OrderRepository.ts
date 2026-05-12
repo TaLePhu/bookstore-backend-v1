@@ -68,7 +68,30 @@ export class OrderRepository implements IOrderRepository {
           WHERE cancel_log.order_id = order_entity.id
             AND cancel_log.from_status = cancel_log.to_status
             AND cancel_log.changed_by IS NULL
+            AND (
+              cancel_log.note ILIKE '%yêu cầu hủy%'
+              OR cancel_log.note ILIKE '%yĂªu cáº§u há»§y%'
+              OR cancel_log.note ILIKE 'Khách yêu cầu hủy:%'
+              OR cancel_log.note ILIKE 'KhĂ¡ch yĂªu cáº§u há»§y:%'
+            )
             AND order_entity.status IN ('PENDING', 'PROCESSING')
+            AND NOT EXISTS (
+              SELECT 1
+              FROM order_status_logs resolve_log
+              WHERE resolve_log.order_id = order_entity.id
+                AND resolve_log.changed_by IS NOT NULL
+                AND resolve_log.created_at > cancel_log.created_at
+                AND (
+                  resolve_log.to_status = 'CANCELLED'
+                  OR (
+                    resolve_log.from_status = resolve_log.to_status
+                    AND (
+                      resolve_log.note ILIKE 'Admin từ chối yêu cầu hủy:%'
+                      OR resolve_log.note ILIKE 'Admin tu choi yeu cau huy:%'
+                    )
+                  )
+                )
+            )
         )`,
         'cancelRequested'
       )

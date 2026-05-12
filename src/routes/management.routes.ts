@@ -6,6 +6,7 @@ import { Role } from '@entities/User';
 import { validateDto } from '@middlewares/validate.middleware';
 import { AdminOrderController } from '@controllers/AdminOrderController';
 import { UpdateOrderStatusDto } from '@dtos/admin/UpdateOrderStatusDto';
+import { RejectCancelRequestDto } from '@dtos/admin/RejectCancelRequestDto';
 
 const router = Router();
 const adminOrderController = container.resolve(AdminOrderController);
@@ -22,6 +23,11 @@ router.patch(
   '/orders/:id/status',
   validateDto(UpdateOrderStatusDto),
   adminOrderController.updateStatus
+);
+router.post(
+  '/orders/:id/cancel-request/reject',
+  validateDto(RejectCancelRequestDto),
+  adminOrderController.rejectCancelRequest
 );
 
 export default router;
