@@ -13,6 +13,16 @@ import { asyncWrapper } from '@utils/async-wrapper';
 export class AuthController {
   constructor(private authService: AuthService) {}
 
+  checkEmail = asyncWrapper(async (req: Request, res: Response) => {
+    const email = typeof req.query.email === 'string' ? req.query.email.trim() : '';
+    if (!email) {
+      return sendError(res, 'Vui lòng nhập email', 400);
+    }
+
+    const result = await this.authService.checkEmailExists(email);
+    return sendSuccess(res, result, 'Kiểm tra email thành công');
+  });
+
   register = asyncWrapper(async (req: Request, res: Response) => {
     const registerDto: RegisterDto = req.body;
     const result = await this.authService.register(registerDto);

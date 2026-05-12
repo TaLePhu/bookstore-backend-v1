@@ -39,6 +39,11 @@ export class AuthService {
     @inject(TOKENS.REFRESH_TOKEN_REPOSITORY) private refreshTokenRepository: IRefreshTokenRepository
   ) {}
 
+  async checkEmailExists(email: string): Promise<{ exists: boolean }> {
+    const user = await this.userRepository.findByEmail(email.trim().toLowerCase());
+    return { exists: !!user };
+  }
+
   async register(data: RegisterDto): Promise<{ message: string }> {
     const passwordHash = await HashHelper.hash(data.password);
 
@@ -159,7 +164,7 @@ export class AuthService {
     // Find user by email
     const user = await this.userRepository.findByEmail(data.email);
     if (!user) {
-      throw new UnauthorizedError('Invalid email or password');
+      throw new UnauthorizedError('Email hoặc mật khẩu không đúng');
     }
 
     if (!user.isVerified) {
@@ -173,7 +178,7 @@ export class AuthService {
     // Verify password
     const isPasswordValid = await HashHelper.compare(data.password, user.passwordHash);
     if (!isPasswordValid) {
-      throw new UnauthorizedError('Invalid email or password');
+      throw new UnauthorizedError('Email hoặc mật khẩu không đúng');
     }
 
     const deviceId = uuidv4();

@@ -59,6 +59,7 @@ const verifyEmailLimiter = rateLimit({
 });
 
 // Public routes
+router.get('/check-email', authController.checkEmail);
 router.post('/register', authWriteLimiter, validateDto(RegisterDto), authController.register);
 router.post('/verify-email', verifyEmailLimiter, validateDto(VerifyEmailDto), authController.verifyEmail);
 router.post('/resend-code', authWriteLimiter, validateDto(ResendVerificationCodeDto), authController.resendVerificationCode);
