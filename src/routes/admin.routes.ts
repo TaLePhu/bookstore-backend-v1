@@ -17,18 +17,40 @@ import { CreateBookDto } from '@dtos/book/CreateBookDto';
 import { UpdateBookDto } from '@dtos/book/UpdateBookDto';
 import { uploadBookImages, requireBookImages } from '@middlewares/book-image-upload.middleware';
 import { AdminDashboardController } from '@controllers/AdminDashboardController';
+import { AdminPromotionController } from '@controllers/AdminPromotionController';
+import { CreatePromotionDto } from '@dtos/admin/CreatePromotionDto';
+import { UpdatePromotionDto } from '@dtos/admin/UpdatePromotionDto';
+import { normalizePromotionBody, uploadPromotionBanner } from '@middlewares/promotion-banner-upload.middleware';
 
 const router = Router();
 const adminUserController = container.resolve(AdminUserController);
 const adminCategoryController = container.resolve(AdminCategoryController);
 const adminBookController = container.resolve(AdminBookController);
 const adminDashboardController = container.resolve(AdminDashboardController);
+const adminPromotionController = container.resolve(AdminPromotionController);
 
 // ─── Bảo vệ toàn bộ route: phải đăng nhập & phải là ADMIN ─────────────────
 router.use(authMiddleware);
 router.use(roleGuard(Role.ADMIN));
 
 router.get('/dashboard', adminDashboardController.getDashboard);
+
+router.get('/promotions', adminPromotionController.listPromotions);
+router.post(
+  '/promotions',
+  uploadPromotionBanner,
+  normalizePromotionBody,
+  validateDto(CreatePromotionDto),
+  adminPromotionController.createPromotion,
+);
+router.put(
+  '/promotions/:id',
+  uploadPromotionBanner,
+  normalizePromotionBody,
+  validateDto(UpdatePromotionDto),
+  adminPromotionController.updatePromotion,
+);
+router.delete('/promotions/:id', adminPromotionController.deletePromotion);
 
 // ─── Quản lý tài khoản ──────────────────────────────────────────────────────
 

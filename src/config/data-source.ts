@@ -19,6 +19,8 @@ import { UserBehavior } from '@entities/UserBehavior';
 import { RefreshToken } from '@entities/RefreshToken';
 import { UserAdvance } from '@entities/UserAdvance';
 import { OrderStatusLog } from '@entities/OrderStatusLog';
+import { Promotion } from '@entities/Promotion';
+import { PromotionBook } from '@entities/PromotionBook';
 
 // Migrations
 import { InitialMigration1710000000000 } from '../migrations/1710000000000-InitialMigration';
@@ -41,6 +43,8 @@ import { FixEmbeddingsVectorType1779000000001 } from '../migrations/177900000000
 import { UpdateEmbeddingsVectorDim30721779000000002 } from '../migrations/1779000000002-UpdateEmbeddingsVectorDim3072';
 import { AddBookSoftDelete1779100000000 } from '../migrations/1779100000000-AddBookSoftDelete';
 import { AddCategorySoftDelete1779200000000 } from '../migrations/1779200000000-AddCategorySoftDelete';
+import { CreatePromotions1779300000000 } from '../migrations/1779300000000-CreatePromotions';
+import { AddPromotionBannerImage1779400000000 } from '../migrations/1779400000000-AddPromotionBannerImage';
 
 const env = getEnv();
 
@@ -72,6 +76,8 @@ export const AppDataSource = new DataSource({
     UserAdvance,
     RefreshToken,
     OrderStatusLog,
+    Promotion,
+    PromotionBook,
   ],
   migrations: [
     InitialMigration1710000000000,
@@ -94,6 +100,8 @@ export const AppDataSource = new DataSource({
     UpdateEmbeddingsVectorDim30721779000000002,
     AddBookSoftDelete1779100000000,
     AddCategorySoftDelete1779200000000,
+    CreatePromotions1779300000000,
+    AddPromotionBannerImage1779400000000,
   ],
   subscribers: [],
   cache: false,

@@ -37,6 +37,11 @@ function uploadBuffer(file: Express.Multer.File): Promise<UploadedImage> {
   });
 }
 
+export async function uploadImage(file?: Express.Multer.File): Promise<UploadedImage | null> {
+  if (!file) return null;
+  return uploadBuffer(file);
+}
+
 export async function uploadBookImages(files: Express.Multer.File[]): Promise<UploadedImage[]> {
   if (!files || files.length === 0) return [];
   const uploads = files.map((file) => uploadBuffer(file));

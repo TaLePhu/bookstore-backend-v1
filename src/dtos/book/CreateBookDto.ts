@@ -34,9 +34,10 @@ export class CreateBookDto {
   author: string;
 
   @IsNotEmpty({ message: 'Giá bán không được để trống' })
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  price: number;
+  price?: number;
 
   @IsNotEmpty({ message: 'Giá gốc không được để trống' })
   @IsNumber()

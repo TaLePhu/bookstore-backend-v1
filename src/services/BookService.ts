@@ -10,6 +10,8 @@ import { UpdateBookDto } from '@dtos/book/UpdateBookDto';
 import { Book } from '@entities/Book';
 import { BookImage } from '@entities/BookImage';
 import { OrderItem } from '@entities/OrderItem';
+import { PromotionStatus } from '@entities/Promotion';
+import { PromotionBook } from '@entities/PromotionBook';
 import { AppDataSource } from '@config/data-source';
 import { uploadBookImages, deleteCloudinaryImages } from '@utils/cloudinary';
 import { EmbeddingSearchService } from '@services/EmbeddingSearchService';
@@ -43,6 +45,42 @@ export class BookService {
     } catch (error) {
       console.warn('Update book embedding failed:', error);
     }
+  }
+
+  private isPromotionEffective(promotion?: PromotionBook['promotion'] | null): boolean {
+    if (!promotion) return false;
+
+    const now = new Date();
+    const startsAt = promotion.startsAt ? new Date(promotion.startsAt) : null;
+    const endsAt = promotion.endsAt ? new Date(promotion.endsAt) : null;
+
+    return (
+      promotion.status === PromotionStatus.ACTIVE &&
+      Number(promotion.discountPercent || 0) > 0 &&
+      (!startsAt || startsAt <= now) &&
+      (!endsAt || endsAt >= now)
+    );
+  }
+
+  private async applyCurrentPromotionPrice(book: Book): Promise<Book> {
+    const promotionItems = await AppDataSource.getRepository(PromotionBook).find({
+      where: { bookId: book.id },
+      relations: ['promotion'],
+    });
+    const effectivePromotion = promotionItems.find((item) => this.isPromotionEffective(item.promotion))?.promotion;
+    const basePrice = Number(book.originalPrice || book.price || 0);
+
+    book.originalPrice = basePrice;
+    if (effectivePromotion) {
+      const discountPercent = Number(effectivePromotion.discountPercent || 0);
+      book.price = Math.round((basePrice * (100 - discountPercent)) / 100);
+      book.discount = discountPercent;
+    } else {
+      book.price = basePrice;
+      book.discount = 0;
+    }
+
+    return AppDataSource.getRepository(Book).save(book);
   }
 
   private parseImageIds(value: unknown): string[] {
@@ -230,6 +268,10 @@ export class BookService {
 
     const { releaseDate, ...rest } = dto;
     const bookData: Partial<Book> = { ...rest };
+    const originalPrice = Number(dto.originalPrice ?? dto.price ?? 0);
+    bookData.originalPrice = originalPrice;
+    bookData.price = originalPrice;
+    bookData.discount = 0;
     if (releaseDate) {
       bookData.releaseDate = new Date(releaseDate);
     }
@@ -289,6 +331,11 @@ export class BookService {
 
     const { releaseDate, ...rest } = dto;
     const bookData: Partial<Book> = { ...rest };
+    delete (bookData as any).price;
+    delete (bookData as any).discount;
+    if (dto.originalPrice !== undefined) {
+      bookData.originalPrice = Number(dto.originalPrice);
+    }
     if (releaseDate) {
       bookData.releaseDate = new Date(releaseDate);
     }
@@ -301,11 +348,12 @@ export class BookService {
       }
 
       // Xóa cache detail sau khi update
+      const pricedBook = await this.applyCurrentPromotionPrice(updatedBook);
       await redisConfig.del(`book:detail:${id}`);
       await redisConfig.del(`book:detail:${id}:with-deleted`);
 
-      await this.updateEmbeddingForBook(updatedBook, categoryName ?? await this.getCategoryName(updatedBook.categoryId));
-      return updatedBook;
+      await this.updateEmbeddingForBook(pricedBook, categoryName ?? await this.getCategoryName(pricedBook.categoryId));
+      return pricedBook;
     }
 
     const uploadedImages = await uploadBookImages(files || []);
@@ -389,6 +437,8 @@ export class BookService {
         throw new NotFoundError('Sách không tồn tại');
       }
 
+      const pricedBook = await this.applyCurrentPromotionPrice(updatedBook);
+
       try {
         await deleteCloudinaryImages(selectedPublicIds);
       } catch (cleanupError) {
@@ -399,8 +449,8 @@ export class BookService {
       await redisConfig.del(`book:detail:${id}`);
       await redisConfig.del(`book:detail:${id}:with-deleted`);
 
-      await this.updateEmbeddingForBook(updatedBook, categoryName ?? await this.getCategoryName(updatedBook.categoryId));
-      return updatedBook;
+      await this.updateEmbeddingForBook(pricedBook, categoryName ?? await this.getCategoryName(pricedBook.categoryId));
+      return pricedBook;
     } catch (error) {
       try {
         await deleteCloudinaryImages(uploadedImages.map((img) => img.publicId));

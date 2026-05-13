@@ -1,0 +1,258 @@
+import { injectable } from 'tsyringe';
+import { In } from 'typeorm';
+import { AppDataSource } from '@config/data-source';
+import { Book } from '@entities/Book';
+import { Promotion, PromotionStatus } from '@entities/Promotion';
+import { PromotionBook } from '@entities/PromotionBook';
+import { CreatePromotionDto } from '@dtos/admin/CreatePromotionDto';
+import { UpdatePromotionDto } from '@dtos/admin/UpdatePromotionDto';
+import { NotFoundError, ValidationError } from '@utils/errors';
+import { deleteCloudinaryImages, uploadImage } from '@utils/cloudinary';
+
+@injectable()
+export class AdminPromotionService {
+  private promotionRepo = AppDataSource.getRepository(Promotion);
+  private promotionBookRepo = AppDataSource.getRepository(PromotionBook);
+  private bookRepo = AppDataSource.getRepository(Book);
+
+  private getFallbackImageUrl(bookId: string): string {
+    const fallbackImageUrls = [
+      'https://images.unsplash.com/photo-1544947950-fa07a98d237f?q=80&w=800',
+      'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?q=80&w=800',
+      'https://images.unsplash.com/photo-1495446815901-a7297e633e8d?q=80&w=800',
+      'https://images.unsplash.com/photo-1512820790803-83ca734da794?q=80&w=800',
+    ];
+    const hash = bookId.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+    return fallbackImageUrls[hash % fallbackImageUrls.length];
+  }
+
+  private mapPromotion(promotion: Promotion) {
+    const books = (promotion.promotionBooks || []).filter((item) => item.book).map((item) => {
+      const images = (item.book.images || []).filter(Boolean).sort((left, right) => {
+        if (left.isPrimary === right.isPrimary) return 0;
+        return left.isPrimary ? -1 : 1;
+      });
+
+      return {
+        ...item.book,
+        image: images[0]?.url || this.getFallbackImageUrl(item.bookId),
+      };
+    });
+
+    return {
+      ...promotion,
+      bannerImageUrl: promotion.bannerImageUrl,
+      books,
+      bookCount: books.length,
+    };
+  }
+
+  private parseDate(value?: string): Date | null {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      throw new ValidationError('Ngày khuyến mãi không hợp lệ');
+    }
+    return date;
+  }
+
+  private isPromotionEffective(promotion: Promotion): boolean {
+    const now = new Date();
+    const startsAt = promotion.startsAt ? new Date(promotion.startsAt) : null;
+    const endsAt = promotion.endsAt ? new Date(promotion.endsAt) : null;
+
+    return (
+      promotion.status === PromotionStatus.ACTIVE &&
+      promotion.discountPercent > 0 &&
+      (!startsAt || startsAt <= now) &&
+      (!endsAt || endsAt >= now)
+    );
+  }
+
+  private validateDateRange(startsAt: Date | null, endsAt: Date | null): void {
+    if (startsAt && endsAt && startsAt > endsAt) {
+      throw new ValidationError('Ngày bắt đầu phải trước ngày kết thúc');
+    }
+  }
+
+  private normalizeBookIds(bookIds: string[] = []): string[] {
+    return Array.from(new Set(bookIds.filter(Boolean)));
+  }
+
+  private async validateBookPromotionConflicts(promotion: Promotion, bookIds: string[]): Promise<void> {
+    if (bookIds.length === 0) return;
+
+    const existingItems = await this.promotionBookRepo.find({
+      where: { bookId: In(bookIds) },
+    });
+    const conflicts = existingItems.filter((item) => item.promotionId !== promotion.id);
+    if (conflicts.length > 0) {
+      throw new ValidationError('Một số sách đang thuộc chương trình khuyến mãi khác', {
+        bookIds: conflicts.map((item) => item.bookId),
+      });
+    }
+  }
+
+  private async applyPromotionToBooks(promotion: Promotion, bookIds: string[]): Promise<void> {
+    if (bookIds.length === 0) return;
+
+    const books = await this.bookRepo.find({ where: { id: In(bookIds) } });
+    const foundIds = new Set(books.map((book) => book.id));
+    const missingIds = bookIds.filter((id) => !foundIds.has(id));
+    if (missingIds.length > 0) {
+      throw new ValidationError('Một số sách không tồn tại', { bookIds: missingIds });
+    }
+
+    const isEffective = this.isPromotionEffective(promotion);
+    for (const book of books) {
+      const currentPrice = Number(book.price || 0);
+      const originalPrice = Number(book.originalPrice || currentPrice) || currentPrice;
+      const basePrice = originalPrice > 0 ? originalPrice : currentPrice;
+      const nextPrice = isEffective
+        ? Math.round((basePrice * (100 - promotion.discountPercent)) / 100)
+        : basePrice;
+
+      book.originalPrice = basePrice;
+      book.price = nextPrice;
+      book.discount = isEffective ? promotion.discountPercent : 0;
+    }
+
+    await this.bookRepo.save(books);
+  }
+
+  private async restoreBooks(bookIds: string[]): Promise<void> {
+    if (bookIds.length === 0) return;
+
+    const books = await this.bookRepo.find({ where: { id: In(bookIds) } });
+    for (const book of books) {
+      const currentPrice = Number(book.price || 0);
+      const originalPrice = Number(book.originalPrice || currentPrice) || currentPrice;
+      book.price = originalPrice;
+      book.discount = 0;
+    }
+
+    await this.bookRepo.save(books);
+  }
+
+  private async syncBooks(promotion: Promotion, bookIds: string[] = []): Promise<void> {
+    const normalizedBookIds = this.normalizeBookIds(bookIds);
+    await this.validateBookPromotionConflicts(promotion, normalizedBookIds);
+    const existingBookIds = (await this.promotionBookRepo.find({ where: { promotionId: promotion.id } })).map(
+      (item) => item.bookId
+    );
+    const nextBookIds = new Set(normalizedBookIds);
+    const removedBookIds = existingBookIds.filter((bookId) => !nextBookIds.has(bookId));
+
+    await this.promotionBookRepo.delete({ promotionId: promotion.id });
+    await this.restoreBooks(removedBookIds);
+
+    if (normalizedBookIds.length > 0) {
+      await this.applyPromotionToBooks(promotion, normalizedBookIds);
+      await this.promotionBookRepo.save(
+        normalizedBookIds.map((bookId) => this.promotionBookRepo.create({ promotionId: promotion.id, bookId }))
+      );
+    }
+  }
+
+  async listPromotions() {
+    const promotions = await this.promotionRepo.find({
+      relations: ['promotionBooks', 'promotionBooks.book', 'promotionBooks.book.images', 'promotionBooks.book.category'],
+      order: { createdAt: 'DESC' },
+    });
+    return promotions.map((promotion) => this.mapPromotion(promotion));
+  }
+
+  async createPromotion(dto: CreatePromotionDto, bannerImage?: Express.Multer.File) {
+    const startsAt = this.parseDate(dto.startsAt);
+    const endsAt = this.parseDate(dto.endsAt);
+    this.validateDateRange(startsAt, endsAt);
+    const uploadedBanner = await uploadImage(bannerImage);
+
+    const promotion = this.promotionRepo.create({
+      name: dto.name.trim(),
+      description: dto.description?.trim() || null,
+      bannerImageUrl: uploadedBanner?.url || dto.bannerImageUrl?.trim() || null,
+      bannerImagePublicId: uploadedBanner?.publicId || null,
+      discountPercent: dto.discountPercent,
+      startsAt,
+      endsAt,
+      status: dto.status || PromotionStatus.ACTIVE,
+    });
+
+    let savedPromotionId: string | null = null;
+    try {
+      const saved = await this.promotionRepo.save(promotion);
+      savedPromotionId = saved.id;
+      await this.syncBooks(saved, dto.bookIds || []);
+      return this.getPromotionById(saved.id);
+    } catch (error) {
+      if (savedPromotionId) {
+        await this.promotionRepo.delete(savedPromotionId);
+      }
+      if (uploadedBanner?.publicId) {
+        await deleteCloudinaryImages([uploadedBanner.publicId]);
+      }
+      throw error;
+    }
+  }
+
+  async getPromotionById(id: string) {
+    const promotion = await this.promotionRepo.findOne({
+      where: { id },
+      relations: ['promotionBooks', 'promotionBooks.book', 'promotionBooks.book.images', 'promotionBooks.book.category'],
+    });
+    if (!promotion) throw new NotFoundError('Chương trình khuyến mãi không tồn tại');
+    return this.mapPromotion(promotion);
+  }
+
+  async updatePromotion(id: string, dto: UpdatePromotionDto, bannerImage?: Express.Multer.File) {
+    const promotion = await this.promotionRepo.findOne({ where: { id } });
+    const oldBannerPublicId = promotion?.bannerImagePublicId;
+    if (!promotion) throw new NotFoundError('Chương trình khuyến mãi không tồn tại');
+
+    if (typeof dto.name === 'string') promotion.name = dto.name.trim();
+    if (typeof dto.description === 'string') promotion.description = dto.description.trim() || null;
+    if (typeof dto.bannerImageUrl === 'string') {
+      promotion.bannerImageUrl = dto.bannerImageUrl.trim() || null;
+      promotion.bannerImagePublicId = null;
+    }
+    if (typeof dto.discountPercent === 'number') promotion.discountPercent = dto.discountPercent;
+    if (dto.startsAt !== undefined) promotion.startsAt = this.parseDate(dto.startsAt);
+    if (dto.endsAt !== undefined) promotion.endsAt = this.parseDate(dto.endsAt);
+    if (dto.status) promotion.status = dto.status;
+    this.validateDateRange(promotion.startsAt, promotion.endsAt);
+    const uploadedBanner = await uploadImage(bannerImage);
+    if (uploadedBanner) {
+      promotion.bannerImageUrl = uploadedBanner.url;
+      promotion.bannerImagePublicId = uploadedBanner.publicId;
+    }
+
+    try {
+      const saved = await this.promotionRepo.save(promotion);
+      if ((uploadedBanner || typeof dto.bannerImageUrl === 'string') && oldBannerPublicId) {
+        await deleteCloudinaryImages([oldBannerPublicId]);
+      }
+      if (dto.bookIds) {
+        await this.syncBooks(saved, dto.bookIds);
+      } else {
+        const currentBookIds = (await this.promotionBookRepo.find({ where: { promotionId: id } })).map((item) => item.bookId);
+        await this.applyPromotionToBooks(saved, currentBookIds);
+      }
+      return this.getPromotionById(id);
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async deletePromotion(id: string): Promise<void> {
+    const promotion = await this.promotionRepo.findOne({ where: { id }, relations: ['promotionBooks'] });
+    if (!promotion) throw new NotFoundError('Chương trình khuyến mãi không tồn tại');
+
+    const bookIds = (promotion.promotionBooks || []).map((item) => item.bookId);
+    await this.restoreBooks(bookIds);
+    if (promotion.bannerImagePublicId) {
+      await deleteCloudinaryImages([promotion.bannerImagePublicId]);
+    }
+    await this.promotionRepo.delete(id);
+  }
+}
