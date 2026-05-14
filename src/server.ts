@@ -1,3 +1,4 @@
+import './register-paths';
 import 'reflect-metadata';
 import { Server } from 'http';
 import { Express } from 'express';

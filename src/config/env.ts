@@ -36,7 +36,7 @@ export interface EnvConfig {
   bcryptRounds: number;
 
   // CORS
-  corsOrigin: string;
+  corsOrigin: string | string[];
 
   // Rate Limiting
   rateLimit: {
@@ -84,23 +84,37 @@ function parseEnv(): EnvConfig {
     }
     return value;
   };
+  const databaseUrl = process.env['DATABASE_URL'];
+  const dbSsl =
+    process.env['DB_SSL'] === 'true' ||
+    Boolean(databaseUrl && databaseUrl.includes('sslmode=require'));
+  const nodeEnv = (process.env['NODE_ENV'] as NodeEnv) || 'development';
+  const dbSynchronize = process.env['DB_SYNCHRONIZE'] === 'true';
+  const corsOrigin = (process.env['CORS_ORIGIN'] || 'http://localhost:5173')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  if (nodeEnv === 'production' && dbSynchronize) {
+    throw new Error('DB_SYNCHRONIZE must be false in production. Use migrations instead.');
+  }
 
   return {
-    nodeEnv: (process.env['NODE_ENV'] as NodeEnv) || 'development',
+    nodeEnv,
     port: parseInt(process.env['PORT'] || '3000', 10),
     appName: process.env['APP_NAME'] || 'BookStore Backend',
     logLevel: process.env['LOG_LEVEL'] || 'debug',
 
     db: {
-      url: process.env['DATABASE_URL'],
-      host: throwIfEmpty(process.env['DB_HOST'], 'DB_HOST'),
+      url: databaseUrl,
+      host: databaseUrl ? process.env['DB_HOST'] || '' : throwIfEmpty(process.env['DB_HOST'], 'DB_HOST'),
       port: parseInt(process.env['DB_PORT'] || '5432', 10),
-      username: throwIfEmpty(process.env['DB_USERNAME'], 'DB_USERNAME'),
-      password: throwIfEmpty(process.env['DB_PASSWORD'], 'DB_PASSWORD'),
-      database: throwIfEmpty(process.env['DB_DATABASE'], 'DB_DATABASE'),
-      synchronize: process.env['DB_SYNCHRONIZE'] === 'true',
+      username: databaseUrl ? process.env['DB_USERNAME'] || '' : throwIfEmpty(process.env['DB_USERNAME'], 'DB_USERNAME'),
+      password: databaseUrl ? process.env['DB_PASSWORD'] || '' : throwIfEmpty(process.env['DB_PASSWORD'], 'DB_PASSWORD'),
+      database: databaseUrl ? process.env['DB_DATABASE'] || '' : throwIfEmpty(process.env['DB_DATABASE'], 'DB_DATABASE'),
+      synchronize: dbSynchronize,
       logging: process.env['DB_LOGGING'] === 'true',
-      ssl: process.env['DB_SSL'] === 'true',
+      ssl: dbSsl,
     },
 
     jwt: {
@@ -112,7 +126,7 @@ function parseEnv(): EnvConfig {
 
     bcryptRounds: parseInt(process.env['BCRYPT_ROUNDS'] || '10', 10),
 
-    corsOrigin: process.env['CORS_ORIGIN'] || 'http://localhost:3001',
+    corsOrigin: corsOrigin.length === 1 ? corsOrigin[0] : corsOrigin,
 
     rateLimit: {
       windowMs: parseInt(process.env['RATE_LIMIT_WINDOW_MS'] || '15000', 10),

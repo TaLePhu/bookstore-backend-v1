@@ -3,10 +3,16 @@
   "version": "1.0.0",
   "description": "BookStore Backend - Production-ready Node.js + Express + TypeScript",
   "main": "dist/server.js",
+  "engines": {
+    "node": ">=20.9.0",
+    "npm": ">=10.0.0"
+  },
   "scripts": {
     "dev": "node --use-system-ca -r ts-node/register -r tsconfig-paths/register src/server.ts",
     "build": "tsc",
     "start": "node --use-system-ca dist/server.js",
+    "migration:run:prod": "node --use-system-ca -r ./dist/register-paths.js ./node_modules/typeorm/cli.js migration:run -d dist/config/data-source.js",
+    "migration:revert:prod": "node --use-system-ca -r ./dist/register-paths.js ./node_modules/typeorm/cli.js migration:revert -d dist/config/data-source.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
