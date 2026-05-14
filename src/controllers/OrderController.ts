@@ -87,7 +87,7 @@ export class OrderController {
 
   submitOrderReview = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const review = await this.orderService.submitOrderReview({
+      const result = await this.orderService.submitOrderReview({
         orderCode: String(req.body?.orderCode || ''),
         bookId: String(req.body?.bookId || ''),
         rating: Number(req.body?.rating),
@@ -96,7 +96,7 @@ export class OrderController {
 
       res.status(201).json({
         success: true,
-        data: review,
+        data: result,
         message: 'Cảm ơn bạn đã đánh giá sản phẩm',
       });
     } catch (error) {

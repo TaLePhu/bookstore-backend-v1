@@ -110,7 +110,7 @@ export class OrderService {
     bookId: string;
     rating: number;
     comment?: string;
-  }): Promise<Review> {
+  }): Promise<{ review: Review; bookRating: { bookId: string; rating: number; totalReviews: number } }> {
     const orderCode = params.orderCode.trim();
     const bookId = params.bookId.trim();
     const rating = Number(params.rating);
@@ -157,7 +157,11 @@ export class OrderService {
     if (existingReview) {
       existingReview.rating = rating;
       existingReview.comment = comment;
-      return reviewRepo.save(existingReview);
+      const savedReview = await reviewRepo.save(existingReview);
+      return {
+        review: savedReview,
+        bookRating: await this.calculateBookRating(bookId),
+      };
     }
 
     const review = reviewRepo.create({
@@ -167,7 +171,26 @@ export class OrderService {
       comment,
     });
 
-    return reviewRepo.save(review);
+    const savedReview = await reviewRepo.save(review);
+    return {
+      review: savedReview,
+      bookRating: await this.calculateBookRating(bookId),
+    };
+  }
+
+  private async calculateBookRating(bookId: string): Promise<{ bookId: string; rating: number; totalReviews: number }> {
+    const stat = await AppDataSource.getRepository(Review)
+      .createQueryBuilder('review')
+      .select('COUNT(review.id)', 'totalReviews')
+      .addSelect('COALESCE(AVG(review.rating), 0)', 'rating')
+      .where('review.bookId = :bookId', { bookId })
+      .getRawOne<{ totalReviews: string; rating: string }>();
+
+    return {
+      bookId,
+      totalReviews: Number(stat?.totalReviews || 0),
+      rating: Number(Number(stat?.rating || 0).toFixed(1)),
+    };
   }
 
   /**
@@ -177,6 +200,10 @@ export class OrderService {
    */
   async createOrder(userId: string, dto: CreateOrderDto): Promise<Order> {
     const checkoutUser = await AppDataSource.getRepository(User).findOne({ where: { id: userId } });
+
+    if (dto.guestItems && dto.guestItems.length > 0) {
+      return this.createDirectUserOrder(userId, dto, checkoutUser?.email);
+    }
 
     // 1. Lấy Cart + CartItems (eager load book)
     const cart = await this.cartRepository.findActiveByUserId(userId);
@@ -346,6 +373,106 @@ export class OrderService {
     // 8. Reload Order kèm relations để trả về cho client
     const result = await this.orderRepository.findByIdAndUserId(savedOrder.id, userId);
     await this.sendOrderConfirmationEmail(result!, dto.email || checkoutUser?.email);
+    return result!;
+  }
+
+  private async createDirectUserOrder(userId: string, dto: CreateOrderDto, fallbackEmail?: string): Promise<Order> {
+    const addressRepo = AppDataSource.getRepository(Address);
+    let addressId = dto.addressId;
+
+    if (addressId) {
+      const address = await addressRepo.findOne({ where: { id: addressId, userId } });
+      if (!address) {
+        throw new NotFoundError('Địa chỉ không tồn tại hoặc không thuộc về bạn');
+      }
+    } else {
+      if (!dto.addressLine || !dto.phone || !dto.receiverName || !dto.country || !dto.provinceName || !dto.districtName || !dto.wardName) {
+        throw new AppError('Vui lòng cung cấp đầy đủ thông tin giao hàng', 400);
+      }
+
+      const address = addressRepo.create({
+        userId,
+        receiverName: dto.receiverName,
+        phone: dto.phone,
+        addressLine: dto.addressLine,
+        country: dto.country ?? 'Việt Nam',
+        provinceCode: dto.provinceCode,
+        provinceName: dto.provinceName,
+        districtCode: dto.districtCode,
+        districtName: dto.districtName,
+        wardCode: dto.wardCode,
+        wardName: dto.wardName,
+      });
+      addressId = (await addressRepo.save(address)).id;
+    }
+
+    const savedOrder = await AppDataSource.transaction(async (manager: EntityManager) => {
+      const itemsData: Array<{ bookId: string; quantity: number; price: number; subTotal: number }> = [];
+
+      for (const item of dto.guestItems!) {
+        const lockedBook = await manager.findOne(Book, {
+          where: { id: item.bookId },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (!lockedBook) throw new NotFoundError('Sách không còn tồn tại');
+
+        if (lockedBook.stock < item.quantity) {
+          throw new AppError(`Sách "${lockedBook.title}" chỉ còn ${lockedBook.stock} cuốn trong kho (bạn đang chọn ${item.quantity})`, 400);
+        }
+
+        const price = Number(lockedBook.price);
+        itemsData.push({
+          bookId: lockedBook.id,
+          quantity: item.quantity,
+          price,
+          subTotal: item.quantity * price,
+        });
+      }
+
+      const shippingFee = dto.shippingFee ?? 0;
+      const totalAmount = itemsData.reduce((sum, item) => sum + item.subTotal, 0) + shippingFee;
+      const now = new Date();
+      const dd = String(now.getDate()).padStart(2, '0');
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const yy = String(now.getFullYear()).slice(-2);
+      const randomStr = Math.random().toString(36).substring(2, 6).toUpperCase();
+
+      const createdOrder = await manager.save(Order, manager.create(Order, {
+        userId,
+        addressId: addressId!,
+        orderCode: `ORD-${dd}${mm}${yy}-${randomStr}`,
+        totalAmount,
+        shippingFee,
+        note: dto.note ?? null,
+        status: OrderStatus.PENDING,
+      }));
+
+      await manager.save(Payment, manager.create(Payment, {
+        orderId: createdOrder.id,
+        amount: totalAmount,
+        method: dto.paymentMethod ?? PaymentMethod.COD,
+        status: PaymentStatus.PENDING,
+      }));
+
+      await manager.save(OrderItem, itemsData.map((item) => manager.create(OrderItem, {
+        orderId: createdOrder.id,
+        bookId: item.bookId,
+        quantity: item.quantity,
+        price: item.price,
+        subTotal: item.subTotal,
+      })));
+
+      for (const item of itemsData) {
+        await manager.decrement(Book, { id: item.bookId }, 'stock', item.quantity);
+        await manager.increment(Book, { id: item.bookId }, 'soldCount', item.quantity);
+      }
+
+      return createdOrder;
+    });
+
+    const result = await this.orderRepository.findByIdAndUserId(savedOrder.id, userId);
+    await this.sendOrderConfirmationEmail(result!, dto.email || fallbackEmail);
     return result!;
   }
 
