@@ -45,6 +45,7 @@ import { AddBookSoftDelete1779100000000 } from '../migrations/1779100000000-AddB
 import { AddCategorySoftDelete1779200000000 } from '../migrations/1779200000000-AddCategorySoftDelete';
 import { CreatePromotions1779300000000 } from '../migrations/1779300000000-CreatePromotions';
 import { AddPromotionBannerImage1779400000000 } from '../migrations/1779400000000-AddPromotionBannerImage';
+import { AddReviewOrderLink1779500000000 } from '../migrations/1779500000000-AddReviewOrderLink';
 
 const env = getEnv();
 
@@ -102,6 +103,7 @@ export const AppDataSource = new DataSource({
     AddCategorySoftDelete1779200000000,
     CreatePromotions1779300000000,
     AddPromotionBannerImage1779400000000,
+    AddReviewOrderLink1779500000000,
   ],
   subscribers: [],
   cache: false,

@@ -9,6 +9,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { User } from './User';
 import { Book } from './Book';
+import { Order } from './Order';
 
 @Entity('reviews')
 export class Review {
@@ -38,4 +39,11 @@ export class Review {
 
   @Column('uuid')
   bookId: string;
+
+  @ManyToOne(() => Order, { onDelete: 'CASCADE', nullable: true })
+  @JoinColumn({ name: 'order_id' })
+  order: Order;
+
+  @Column('uuid', { name: 'order_id', nullable: true })
+  orderId: string | null;
 }

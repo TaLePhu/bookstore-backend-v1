@@ -14,9 +14,11 @@ import { IOrderRepository } from '@repositories/interfaces/IOrderRepository';
 import { ICartRepository } from '@repositories/interfaces/ICartRepository';
 import { CreateOrderDto } from '@dtos/order/CreateOrderDto';
 import { AppError, NotFoundError } from '@utils/errors';
-import { EntityManager } from 'typeorm';
+import { EntityManager, In } from 'typeorm';
 import { TOKENS } from '@config/container';
 import { emailQueue } from '@config/queue';
+import redisConfig from '@config/redis';
+import { BookService } from '@services/BookService';
 
 const isCustomerCancelRequestLog = (log: OrderStatusLog): boolean =>
   log.changedBy === null &&
@@ -149,31 +151,32 @@ export class OrderService {
     const reviewRepo = AppDataSource.getRepository(Review);
     const existingReview = await reviewRepo.findOne({
       where: {
-        userId: order.userId,
+        orderId: order.id,
         bookId,
       },
+      relations: ['user'],
     });
 
     if (existingReview) {
-      existingReview.rating = rating;
-      existingReview.comment = comment;
-      const savedReview = await reviewRepo.save(existingReview);
-      return {
-        review: savedReview,
-        bookRating: await this.calculateBookRating(bookId),
-      };
+      throw new AppError('Sách này đã được đánh giá. Không thể cập nhật đánh giá đã gửi.', 400);
     }
 
     const review = reviewRepo.create({
       userId: order.userId,
       bookId,
+      orderId: order.id,
       rating,
       comment,
     });
 
     const savedReview = await reviewRepo.save(review);
+    await redisConfig.del(...BookService.getDetailCacheKeys(bookId));
+
     return {
-      review: savedReview,
+      review: (await reviewRepo.findOne({
+        where: { id: savedReview.id },
+        relations: ['user'],
+      })) ?? savedReview,
       bookRating: await this.calculateBookRating(bookId),
     };
   }
@@ -824,6 +827,29 @@ export class OrderService {
     if (!order) {
       throw new NotFoundError('Không tìm thấy đơn hàng phù hợp');
     }
+
+    return this.attachOrderItemReviews(order);
+  }
+
+  private async attachOrderItemReviews(order: Order): Promise<Order> {
+    const bookIds = [...new Set((order.items || []).map((item) => item.bookId).filter(Boolean))];
+    if (!order.userId || bookIds.length === 0) {
+      return order;
+    }
+
+    const reviews = await AppDataSource.getRepository(Review).find({
+      where: {
+        orderId: order.id,
+        bookId: In(bookIds),
+      },
+      relations: ['user'],
+    });
+    const reviewByBookId = new Map(reviews.map((review) => [review.bookId, review]));
+
+    order.items = (order.items || []).map((item) => {
+      (item as OrderItem & { review?: Review | null }).review = reviewByBookId.get(item.bookId) || null;
+      return item;
+    });
 
     return order;
   }

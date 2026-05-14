@@ -32,6 +32,23 @@ export class BookService {
     return category?.name ?? null;
   }
 
+  static getDetailCacheKeys(id: string): string[] {
+    return [
+      `book:detail:v2:${id}`,
+      `book:detail:v2:${id}:with-deleted`,
+      `book:detail:${id}`,
+      `book:detail:${id}:with-deleted`,
+    ];
+  }
+
+  private getDetailCacheKey(id: string, includeDeleted: boolean): string {
+    return includeDeleted ? `book:detail:v2:${id}:with-deleted` : `book:detail:v2:${id}`;
+  }
+
+  private async clearDetailCache(id: string): Promise<void> {
+    await redisConfig.del(...BookService.getDetailCacheKeys(id));
+  }
+
   private async updateEmbeddingForBook(book: Book, categoryName?: string | null): Promise<void> {
     try {
       const embeddingText = this.embeddingProviderService.buildBookEmbeddingText({
@@ -126,7 +143,7 @@ export class BookService {
   }
 
   async getBookById(id: string, includeDeleted = false): Promise<BookResponse> {
-    const cacheKey = includeDeleted ? `book:detail:${id}:with-deleted` : `book:detail:${id}`;
+    const cacheKey = this.getDetailCacheKey(id, includeDeleted);
 
     // 1. Kiểm tra cache
     const cachedData = await redisConfig.get(cacheKey);
@@ -349,8 +366,7 @@ export class BookService {
 
       // Xóa cache detail sau khi update
       const pricedBook = await this.applyCurrentPromotionPrice(updatedBook);
-      await redisConfig.del(`book:detail:${id}`);
-      await redisConfig.del(`book:detail:${id}:with-deleted`);
+      await this.clearDetailCache(id);
 
       await this.updateEmbeddingForBook(pricedBook, categoryName ?? await this.getCategoryName(pricedBook.categoryId));
       return pricedBook;
@@ -446,8 +462,7 @@ export class BookService {
       }
 
       // Xóa cache detail sau khi update
-      await redisConfig.del(`book:detail:${id}`);
-      await redisConfig.del(`book:detail:${id}:with-deleted`);
+      await this.clearDetailCache(id);
 
       await this.updateEmbeddingForBook(pricedBook, categoryName ?? await this.getCategoryName(pricedBook.categoryId));
       return pricedBook;
@@ -479,8 +494,7 @@ export class BookService {
     }
 
     await bookRepo.softDelete({ id });
-    await redisConfig.del(`book:detail:${id}`);
-    await redisConfig.del(`book:detail:${id}:with-deleted`);
+    await this.clearDetailCache(id);
   }
 
   async restoreBook(id: string): Promise<void> {
@@ -500,8 +514,7 @@ export class BookService {
     }
 
     await bookRepo.restore({ id });
-    await redisConfig.del(`book:detail:${id}`);
-    await redisConfig.del(`book:detail:${id}:with-deleted`);
+    await this.clearDetailCache(id);
   }
 
   async hardDeleteBook(id: string): Promise<void> {
@@ -536,8 +549,7 @@ export class BookService {
       await manager.delete(Book, { id });
     });
 
-    await redisConfig.del(`book:detail:${id}`);
-    await redisConfig.del(`book:detail:${id}:with-deleted`);
+    await this.clearDetailCache(id);
 
     try {
       await deleteCloudinaryImages(publicIds);
