@@ -85,7 +85,9 @@ Authorization: Bearer <accessToken>
 |---|---|---|---|---|
 | GET | /books | No | `page`, `limit`, `sort?`, `category_id?` | Danh sách sách có phân trang (hỗ trợ sort, lọc theo danh mục) |
 | GET | /books/search | No | `q`, `page`, `limit` | Tìm kiếm sách |
+| GET | /books/semantic-search | No | `q`, `page`, `limit`, `threshold?` | Tìm kiếm ngữ nghĩa (AI Vector Search) |
 | GET | /books/:id | No | none | Chi tiết sách theo UUID |
+| GET | /books/:id/related | No | `limit` | Sách liên quan |
 
 Ghi chú cho Books API mới:
 - `GET /books` hỗ trợ query:
@@ -150,6 +152,18 @@ Ghi chú cho `POST /orders`:
 | GET | /admin/books/:id | Yes (ADMIN) | none | Chi tiết sách |
 | POST | /admin/books | Yes (ADMIN) | Body: create book payload | Tạo sách mới |
 | PUT | /admin/books/:id | Yes (ADMIN) | Body: update book payload | Cập nhật sách |
+| GET | /admin/orders | Yes (ADMIN) | Query: `page?`, `limit?`, `status?` | Danh sách đơn hàng |
+| GET | /admin/orders/:id | Yes (ADMIN) | none | Chi tiết đơn hàng |
+| GET | /admin/orders/search/code | Yes (ADMIN) | Query: `order_code` | Tìm kiếm đơn hàng theo mã |
+| PATCH | /admin/orders/:id/status | Yes (ADMIN) | Body: `status`, `note?` | Cập nhật trạng thái đơn hàng |
+| POST | /admin/orders/:id/reject-cancel | Yes (ADMIN) | Body: `note` | Từ chối yêu cầu hủy đơn |
+| GET | /admin/orders/staff/stats | Yes (ADMIN) | none | Thống kê xử lý đơn hàng của nhân viên |
+| GET | /admin/orders/customers/history | Yes (ADMIN) | Query: `email?`, `phone?` | Lịch sử mua hàng của KH |
+| GET | /admin/promotions | Yes (ADMIN) | none | Danh sách khuyến mãi |
+| POST | /admin/promotions | Yes (ADMIN) | Body: FormData (title, desc, startDate, endDate, bannerImage) | Tạo khuyến mãi mới |
+| PUT | /admin/promotions/:id | Yes (ADMIN) | Body: FormData (cập nhật) | Cập nhật khuyến mãi |
+| DELETE | /admin/promotions/:id | Yes (ADMIN) | none | Xóa khuyến mãi |
+| GET | /admin/dashboard | Yes (ADMIN) | none | Lấy dữ liệu tổng quan thống kê |
 
 ### 4.8 Addresses (protected)
 
@@ -160,6 +174,18 @@ Ghi chú cho `POST /orders`:
 | GET | /addresses/:id | Yes | none | Chi tiết địa chỉ giao hàng |
 | PATCH | /addresses/:id | Yes | Body: đầy đủ field địa chỉ + `isDefault?` | Cập nhật địa chỉ giao hàng |
 | DELETE | /addresses/:id | Yes | none | Xóa địa chỉ giao hàng |
+
+### 4.9 Promotions
+
+| Method | Path | Auth | Body/Query | Mô tả |
+|---|---|---|---|---|
+| GET | /promotions | No | none | Lấy danh sách khuyến mãi đang diễn ra |
+
+### 4.10 AI Advisor
+
+| Method | Path | Auth | Body/Query | Mô tả |
+|---|---|---|---|---|
+| POST | /ai-advisor/advise | No/Yes | Body: `question`, `limit?`, `history?` | Nhận tư vấn từ AI |
 
 Ghi chú cho Address API:
 - Địa chỉ đầu tiên của user sẽ tự động là mặc định.

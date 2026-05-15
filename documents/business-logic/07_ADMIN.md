@@ -51,6 +51,22 @@ Feature Admin quản lý tài khoản người dùng, quản lý sách và quả
 2. Admin cập nhật danh mục theo id.
 3. Admin xoá danh mục theo id.
 
+### 3.8 Quản lý đơn hàng (Admin)
+1. Admin xem danh sách đơn hàng có lọc theo trạng thái và phân trang.
+2. Xem chi tiết đơn hàng theo ID.
+3. Tìm kiếm đơn hàng theo mã đơn (order code).
+4. Cập nhật trạng thái đơn hàng (PENDING -> SHIPPING -> COMPLETED).
+5. Xử lý yêu cầu huỷ đơn hàng từ khách hàng (chấp nhận hoặc từ chối kèm lý do).
+6. Xem thống kê (stats) của nhân viên xử lý và tra cứu lịch sử mua hàng theo email/sđt.
+
+### 3.9 Quản lý khuyến mãi (Admin)
+1. Admin quản lý các chương trình khuyến mãi: list, tạo mới, cập nhật, xóa.
+2. Khi tạo/sửa có thể đính kèm banner, ảnh sẽ được upload lên Cloudinary.
+
+### 3.10 Admin Dashboard
+1. Admin truy cập API dashboard để lấy dữ liệu tổng quan.
+2. Dữ liệu bao gồm các chỉ số thống kê tổng quát về doanh thu, số lượng đơn hàng, người dùng, v.v.
+
 ## 4. Ràng buộc nghiệp vụ
 - Không cho admin thao tác tự hạ cấp hoặc tự khoá chính mình.
 - Reset mật khẩu phải tạo side effect gửi email để user biết thay đổi.

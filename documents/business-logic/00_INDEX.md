@@ -15,7 +15,9 @@ Bộ tài liệu này mô tả logic nghiệp vụ của từng feature trong h�
 - Category
 - Cart
 - Order
-- Admin Management (User, Book, Category)
+- Admin Management (User, Book, Category, Order, Promotion, Dashboard)
+- Promotion
+- AI Advisor
 
 ## Cách đọc
 Mỗi feature doc nên có các phần sau:
@@ -36,6 +38,8 @@ Mỗi feature doc nên có các phần sau:
 - [06_ORDER.md](06_ORDER.md)
 - [07_ADMIN.md](07_ADMIN.md)
 - [08_SHARED_RULES.md](08_SHARED_RULES.md)
+- [09_PROMOTION.md](09_PROMOTION.md)
+- [10_AI_ADVISOR.md](10_AI_ADVISOR.md)
 
 ## Ghi chú chung
 - Tài liệu này ưu tiên mô tả business logic, không lặp lại toàn bộ API contract.

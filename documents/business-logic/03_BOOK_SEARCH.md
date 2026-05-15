@@ -26,6 +26,12 @@ Feature Book quản lý danh sách sách, xem chi tiết sách, tìm kiếm sác
 3. Nếu query hợp lệ thì hệ thống gọi repository search để tìm dữ liệu phù hợp.
 4. Kết quả trả về vẫn theo cùng cấu trúc data + pagination.
 
+### 3.4 Xem sách liên quan
+1. Client gọi endpoint xem sách liên quan truyền id sách.
+2. Hệ thống kiểm tra id có đúng UUID không.
+3. Lấy dữ liệu danh sách sách cùng category hoặc theo logic gợi ý để trả về.
+4. Kết quả hỗ trợ pagination (limit mặc định).
+
 ### 3.5 Tìm kiếm ngữ nghĩa (semantic search)
 1. Client gọi `GET /books/semantic-search` với query `q`, `page`, `limit`, `threshold`.
 2. Nếu `q` rỗng thì trả về danh sách rỗng, `total=0`.
