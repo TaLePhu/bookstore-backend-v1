@@ -7,6 +7,7 @@ const redisOptions = {
   host: env.redis.host,
   port: env.redis.port,
   password: env.redis.password,
+  tls: env.redis.tls ? {} : undefined,
   maxRetriesPerRequest: null,
 };
 

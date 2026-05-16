@@ -8,6 +8,7 @@ const connection = {
   host: env.redis.host,
   port: env.redis.port,
   password: env.redis.password,
+  tls: env.redis.tls ? {} : undefined,
 };
 
 export const transporter = nodemailer.createTransport({

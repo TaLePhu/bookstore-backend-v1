@@ -46,9 +46,11 @@ export interface EnvConfig {
 
   // Redis
   redis: {
+    url?: string;
     host: string;
     port: number;
     password?: string;
+    tls: boolean;
   };
 
   // SMTP
@@ -85,6 +87,13 @@ function parseEnv(): EnvConfig {
     return value;
   };
   const databaseUrl = process.env['DATABASE_URL'];
+  const redisUrl = process.env['REDIS_URL'];
+  const parsedRedisUrl = redisUrl ? new URL(redisUrl) : null;
+  const redisProtocol = parsedRedisUrl?.protocol;
+  const redisTls =
+    process.env['REDIS_TLS'] === 'true' ||
+    redisProtocol === 'rediss:';
+
   const dbSsl =
     process.env['DB_SSL'] === 'true' ||
     Boolean(databaseUrl && databaseUrl.includes('sslmode=require'));
@@ -134,9 +143,11 @@ function parseEnv(): EnvConfig {
     },
 
     redis: {
-      host: process.env['REDIS_HOST'] || '127.0.0.1',
-      port: parseInt(process.env['REDIS_PORT'] || '6380', 10),
-      password: process.env['REDIS_PASSWORD'],
+      url: redisUrl,
+      host: parsedRedisUrl?.hostname || process.env['REDIS_HOST'] || '127.0.0.1',
+      port: parsedRedisUrl?.port ? parseInt(parsedRedisUrl.port, 10) : parseInt(process.env['REDIS_PORT'] || '6380', 10),
+      password: parsedRedisUrl?.password ? decodeURIComponent(parsedRedisUrl.password) : process.env['REDIS_PASSWORD'],
+      tls: redisTls,
     },
 
     smtp: {
