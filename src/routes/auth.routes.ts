@@ -27,50 +27,67 @@ function getRetryAfterSeconds(req: Request): number | null {
   return seconds > 0 ? seconds : 0;
 }
 
-const authWriteLimiter = rateLimit({
-	windowMs: 15 * 60 * 1000,
-	max: 10,
-	standardHeaders: true,
-	legacyHeaders: false,
-	handler: (req: Request, res: Response) => {
-		const retryAfterSeconds = getRetryAfterSeconds(req);
-		res.status(429).json({
-			success: false,
-			message: 'Bạn đã thử quá nhiều lần. Vui lòng thử lại sau.',
-			data: {
-				retryAfterSeconds,
-			},
-		});
-	},
+const loginLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req: Request, res: Response) => {
+    const retryAfterSeconds = getRetryAfterSeconds(req);
+    res.status(429).json({
+      success: false,
+      message: 'Bạn đã thử đăng nhập quá nhiều lần. Vui lòng chờ ít phút rồi thử lại.',
+      data: {
+        retryAfterSeconds,
+      },
+    });
+  },
 });
 
-const verifyEmailLimiter = rateLimit({
-	windowMs: 15 * 60 * 1000,
-	max: 5,
-	standardHeaders: true,
-	legacyHeaders: false,
-	handler: (req: Request, res: Response) => {
-		const retryAfterSeconds = getRetryAfterSeconds(req);
-		res.status(429).json({
-			success: false,
-				message: 'Bạn đã nhập mã xác thực quá số lần cho phép. Vui lòng chờ rồi dùng chức năng gửi lại mã.',
-			data: {
-				retryAfterSeconds,
-			},
-		});
-	},
+const authActionLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req: Request, res: Response) => {
+    const retryAfterSeconds = getRetryAfterSeconds(req);
+    res.status(429).json({
+      success: false,
+      message: 'Bạn đã thao tác quá nhiều lần. Vui lòng thử lại sau ít phút.',
+      data: {
+        retryAfterSeconds,
+      },
+    });
+  },
+});
+
+const verifyCodeLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req: Request, res: Response) => {
+    const retryAfterSeconds = getRetryAfterSeconds(req);
+    res.status(429).json({
+      success: false,
+      message: 'Bạn đã nhập mã xác thực quá số lần cho phép. Vui lòng chờ rồi dùng chức năng gửi lại mã.',
+      data: {
+        retryAfterSeconds,
+      },
+    });
+  },
 });
 
 // Public routes
 router.get('/check-email', authController.checkEmail);
-router.post('/register', authWriteLimiter, validateDto(RegisterDto), authController.register);
-router.post('/verify-email', verifyEmailLimiter, validateDto(VerifyEmailDto), authController.verifyEmail);
-router.post('/resend-code', authWriteLimiter, validateDto(ResendVerificationCodeDto), authController.resendVerificationCode);
-router.post('/forgot-password', authWriteLimiter, validateDto(ForgotPasswordDto), authController.forgotPassword);
-router.post('/verify-reset-code', verifyEmailLimiter, validateDto(VerifyPasswordResetCodeDto), authController.verifyPasswordResetCode);
-router.post('/reset-password', authWriteLimiter, validateDto(ResetPasswordDto), authController.resetPassword);
-router.post('/login', authWriteLimiter, validateDto(LoginDto), authController.login);
-router.post('/refresh-token', authWriteLimiter, validateDto(RefreshTokenDto), authController.refreshToken);
+router.post('/register', authActionLimiter, validateDto(RegisterDto), authController.register);
+router.post('/verify-email', verifyCodeLimiter, validateDto(VerifyEmailDto), authController.verifyEmail);
+router.post('/resend-code', authActionLimiter, validateDto(ResendVerificationCodeDto), authController.resendVerificationCode);
+router.post('/forgot-password', authActionLimiter, validateDto(ForgotPasswordDto), authController.forgotPassword);
+router.post('/verify-reset-code', verifyCodeLimiter, validateDto(VerifyPasswordResetCodeDto), authController.verifyPasswordResetCode);
+router.post('/reset-password', authActionLimiter, validateDto(ResetPasswordDto), authController.resetPassword);
+router.post('/login', loginLimiter, validateDto(LoginDto), authController.login);
+router.post('/refresh-token', authActionLimiter, validateDto(RefreshTokenDto), authController.refreshToken);
 
 // Protected routes
 router.post('/logout', authMiddleware, authController.logout);
