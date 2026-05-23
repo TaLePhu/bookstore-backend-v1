@@ -25,6 +25,7 @@ export const transporter = nodemailer.createTransport({
 });
 
 const EMAIL_QUEUE_NAME = 'email-queue';
+const isSmtpConfigured = Boolean(env.smtp.user && env.smtp.pass);
 
 export const emailQueue = new Queue(EMAIL_QUEUE_NAME, {
   connection,
@@ -46,21 +47,51 @@ export interface EmailJobData {
   html?: string;
 }
 
+async function sendEmailNow(data: EmailJobData): Promise<void> {
+  if (!isSmtpConfigured) {
+    console.warn('SMTP is not configured. Skipping email send.');
+    return;
+  }
+
+  const { to, subject, text, html } = data;
+  const info = await transporter.sendMail({
+    from: `"BookStore Server" <${env.smtp.user}>`,
+    to,
+    subject,
+    text,
+    html,
+  });
+  console.log(`Message sent: ${info.messageId}`);
+}
+
+export async function dispatchEmail(jobName: string, data: EmailJobData): Promise<void> {
+  if (!isSmtpConfigured) {
+    console.warn(`SMTP is not configured. Skipping job "${jobName}" for ${data.to}.`);
+    return;
+  }
+
+  try {
+    await sendEmailNow(data);
+    return;
+  } catch (error) {
+    console.error(`Direct SMTP send failed for job "${jobName}". Falling back to queue retry.`, error);
+  }
+
+  try {
+    await emailQueue.add(jobName, data);
+  } catch (queueError) {
+    console.error(`Queue fallback failed for job "${jobName}".`, queueError);
+    throw queueError;
+  }
+}
+
 const emailWorker = new Worker(
   EMAIL_QUEUE_NAME,
   async (job: Job<EmailJobData>) => {
-    const { to, subject, text, html } = job.data;
     try {
-      const info = await transporter.sendMail({
-        from: `"BookStore Server" <${env.smtp.user}>`,
-        to,
-        subject,
-        text,
-        html,
-      });
-      console.log(`Message sent: ${info.messageId}`);
+      await sendEmailNow(job.data);
     } catch (error) {
-      console.error(`Failed to send email to ${to}:`, error);
+      console.error(`Failed to send email to ${job.data.to}:`, error);
       throw error;
     }
   },

@@ -18,7 +18,7 @@ import { Role } from '@entities/User';
 import { UserAdvance } from '@entities/UserAdvance';
 import { RefreshToken } from '@entities/RefreshToken';
 import redisConfig from '@config/redis';
-import { emailQueue } from '@config/queue';
+import { dispatchEmail } from '@config/queue';
 
 export interface AuthResponse {
   id: string;
@@ -389,7 +389,7 @@ export class AuthService {
     );
     await redisConfig.del(`verify_attempts:${email}`);
 
-    await emailQueue.add('sendVerificationCode', {
+    await dispatchEmail('sendVerificationCode', {
       to: email,
       subject: 'Xác thực tài khoản BookStore',
       html: `<h1>Mã xác thực của bạn</h1><p>Mã của bạn là: <strong style="font-size:24px;">${verificationCode}</strong></p><p>Mã này sẽ hết hạn trong 15 phút.</p>`,
@@ -424,10 +424,11 @@ export class AuthService {
     await redisConfig.del(`reset_attempts:${email}`);
     await redisConfig.del(`reset_verified:${email}`);
 
-    await emailQueue.add('sendPasswordResetCode', {
+    await dispatchEmail('sendPasswordResetCode', {
       to: email,
       subject: 'Mã đặt lại mật khẩu BookStore',
       html: `<h1>Đặt lại mật khẩu</h1><p>Mã đặt lại mật khẩu của bạn là: <strong style="font-size:24px;">${resetCode}</strong></p><p>Mã này sẽ hết hạn trong 15 phút.</p>`,
     });
   }
 }
+

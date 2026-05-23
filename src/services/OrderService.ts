@@ -16,7 +16,7 @@ import { CreateOrderDto } from '@dtos/order/CreateOrderDto';
 import { AppError, NotFoundError } from '@utils/errors';
 import { EntityManager, In } from 'typeorm';
 import { TOKENS } from '@config/container';
-import { emailQueue } from '@config/queue';
+import { dispatchEmail } from '@config/queue';
 import redisConfig from '@config/redis';
 import { BookService } from '@services/BookService';
 
@@ -642,7 +642,7 @@ export class OrderService {
       </div>
     `;
 
-    await emailQueue.add('sendOrderConfirmation', {
+    await dispatchEmail('sendOrderConfirmation', {
       to: email,
       subject: `Xác nhận đơn hàng ${orderCode}`,
       text,
@@ -773,7 +773,7 @@ export class OrderService {
       </div>
     `;
 
-    await emailQueue.add('sendOrderConfirmation', {
+    await dispatchEmail('sendOrderConfirmation', {
       to: email,
       subject: `Xác nhận đơn hàng ${orderCode}`,
       text,
@@ -881,3 +881,4 @@ export class OrderService {
     return order;
   }
 }
+
