@@ -46,11 +46,14 @@ export class AIAdvisorService {
   async advise(
     question: string,
     limit: number = 4,
-    history: AdvisorHistoryMessage[] = []
+    history: AdvisorHistoryMessage[] = [],
+    excludeBookIds: string[] = []
   ): Promise<AdvisorResponse> {
     const normalizedQuestion = question.trim();
     const safeLimit = Math.min(8, Math.max(1, limit));
     const safeHistory = this.normalizeHistory(history);
+    const safeExcludeBookIds = this.normalizeExcludeBookIds(excludeBookIds);
+    const allowReuseFromPrevious = this.shouldAllowReuseFromPrevious(normalizedQuestion);
 
     if (!normalizedQuestion) {
       return {
@@ -60,7 +63,12 @@ export class AIAdvisorService {
     }
 
     const searchQuery = this.buildSearchQuery(normalizedQuestion, safeHistory);
-    const candidateBooks = await this.findCandidateBooks(searchQuery, safeLimit);
+    const candidateBooks = await this.findCandidateBooks(
+      searchQuery,
+      safeLimit,
+      safeExcludeBookIds,
+      allowReuseFromPrevious
+    );
     const books = candidateBooks.map((book) => ({
       ...book,
       reason: this.buildFallbackReason(normalizedQuestion, book),
@@ -92,29 +100,104 @@ export class AIAdvisorService {
   }
 
   private buildSearchQuery(question: string, history: AdvisorHistoryMessage[]): string {
+    const normalizedQuestion = this.normalizeText(question);
+    const wantsAlternative = /(khac|goi y khac|doi|thay|them|khong trung|moi hon|re hon|nhe hon)/.test(normalizedQuestion);
+
+    if (wantsAlternative) {
+      return question.slice(0, 1200);
+    }
+
     const previousUserNeeds = history
       .filter((message) => message.role === 'user')
-      .slice(-3)
+      .slice(-2)
       .map((message) => message.content)
       .join(' ');
 
     return [previousUserNeeds, question].filter(Boolean).join(' ').slice(0, 1200);
   }
 
-  private async findCandidateBooks(query: string, limit: number): Promise<BookResponse[]> {
-    const semanticResult = await this.bookService.semanticSearchBooks(query, 1, limit, 0.35);
+  private shouldAllowReuseFromPrevious(question: string): boolean {
+    const normalizedQuestion = this.normalizeText(question);
+    return /(giu tieu chi cu|giu nhu cu|nhu truoc|giong truoc|tuong tu|van tieu chi do|cu nhu vay)/.test(
+      normalizedQuestion
+    );
+  }
+
+  private normalizeExcludeBookIds(excludeBookIds: string[]): string[] {
+    if (!Array.isArray(excludeBookIds)) return [];
+    return [...new Set(excludeBookIds.filter((id) => typeof id === 'string').map((id) => id.trim()).filter(Boolean))].slice(-30);
+  }
+
+  private async findCandidateBooks(
+    query: string,
+    limit: number,
+    excludeBookIds: string[],
+    allowReuseFromPrevious: boolean
+  ): Promise<BookResponse[]> {
+    const effectiveExcludeBookIds = allowReuseFromPrevious ? [] : excludeBookIds;
+    const semanticLimit = Math.min(40, Math.max(limit * 4, 12));
+    const semanticResult = await this.bookService.semanticSearchBooks(query, 1, semanticLimit, 0.3);
 
     if (semanticResult.data.length > 0) {
-      return semanticResult.data;
+      const freshSemantic = semanticResult.data.filter((book) => !excludeBookIds.includes(book.id));
+      if (allowReuseFromPrevious) {
+        const reusedSemantic = semanticResult.data.filter((book) => excludeBookIds.includes(book.id));
+        return this.mixFreshAndReusedBooks(freshSemantic, reusedSemantic, limit);
+      }
+
+      const filteredSemantic = semanticResult.data.filter((book) => !effectiveExcludeBookIds.includes(book.id));
+      if (filteredSemantic.length > 0) {
+        return filteredSemantic.slice(0, limit);
+      }
     }
 
     const fallback = await this.bookRepository.findAllWithFilters({
       page: 1,
-      limit,
+      limit: Math.min(40, Math.max(limit * 4, 12)),
       sort: 'bestseller',
     });
 
-    return fallback.data;
+    const filteredFallback = fallback.data.filter((book) => !effectiveExcludeBookIds.includes(book.id));
+    if (filteredFallback.length > 0) {
+      if (allowReuseFromPrevious) {
+        const freshFallback = fallback.data.filter((book) => !excludeBookIds.includes(book.id));
+        const reusedFallback = fallback.data.filter((book) => excludeBookIds.includes(book.id));
+        return this.mixFreshAndReusedBooks(freshFallback, reusedFallback, limit);
+      }
+      return filteredFallback.slice(0, limit);
+    }
+
+    // If all candidates were excluded, allow reusing best available books.
+    return semanticResult.data.slice(0, limit).length > 0
+      ? semanticResult.data.slice(0, limit)
+      : fallback.data.slice(0, limit);
+  }
+
+  private mixFreshAndReusedBooks(
+    freshBooks: BookResponse[],
+    reusedBooks: BookResponse[],
+    limit: number
+  ): BookResponse[] {
+    if (limit <= 1) {
+      return (freshBooks[0] ? [freshBooks[0]] : reusedBooks.slice(0, 1));
+    }
+
+    const freshTarget = Math.max(1, Math.ceil(limit * 0.7));
+    const reusedTarget = Math.max(0, limit - freshTarget);
+
+    const selectedFresh = freshBooks.slice(0, freshTarget);
+    const selectedReused = reusedBooks
+      .filter((book) => !selectedFresh.some((fresh) => fresh.id === book.id))
+      .slice(0, reusedTarget);
+
+    const merged = [...selectedFresh, ...selectedReused];
+    if (merged.length >= limit) {
+      return merged.slice(0, limit);
+    }
+
+    const topupFresh = freshBooks.filter((book) => !merged.some((picked) => picked.id === book.id));
+    const topupReused = reusedBooks.filter((book) => !merged.some((picked) => picked.id === book.id));
+    return [...merged, ...topupFresh, ...topupReused].slice(0, limit);
   }
 
   private buildFallbackReason(query: string, book: BookResponse): string {
