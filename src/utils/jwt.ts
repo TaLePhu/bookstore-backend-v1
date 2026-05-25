@@ -36,6 +36,9 @@ export class TokenHelper {
         algorithms: [this.JWT_ALGORITHM],
       }) as TokenPayload;
     } catch (error) {
+      if (error instanceof jwt.TokenExpiredError) {
+        throw new Error('Access token expired');
+      }
       throw new Error('Invalid access token');
     }
   }

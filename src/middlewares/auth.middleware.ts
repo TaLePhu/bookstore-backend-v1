@@ -16,12 +16,21 @@ declare global {
 
 export async function authMiddleware(req: Request, _res: Response, next: NextFunction): Promise<void> {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const authHeader = req.headers.authorization?.trim();
+    if (!authHeader) {
       throw new UnauthorizedError('Missing or invalid authorization header');
     }
 
-    const token = authHeader.substring(7);
+    const [scheme, rawToken] = authHeader.split(/\s+/);
+    if (!scheme || scheme.toLowerCase() !== 'bearer' || !rawToken) {
+      throw new UnauthorizedError('Missing or invalid authorization header');
+    }
+
+    const token = rawToken.replace(/^["']|["']$/g, '').trim();
+    if (!token || token === 'null' || token === 'undefined') {
+      throw new UnauthorizedError('Missing or invalid access token');
+    }
+
     const payload = TokenHelper.verifyAccessToken(token);
     const { userId, deviceId } = payload;
 
