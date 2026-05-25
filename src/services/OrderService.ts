@@ -288,11 +288,16 @@ export class OrderService {
       const shippingFee = dto.shippingFee ?? 0;
       const itemsData: Array<{ bookId: string; quantity: number; price: number; subTotal: number }> = [];
 
+      const lockedBooks: Book[] = await manager
+        .getRepository(Book)
+        .createQueryBuilder('book')
+        .where('book.id IN (:...bookIds)', { bookIds: txOrderItems.map((item) => item.bookId) })
+        .setLock('pessimistic_write')
+        .getMany();
+      const lockedBookById = new Map(lockedBooks.map((book) => [book.id, book]));
+
       for (const cartItem of txOrderItems) {
-        const lockedBook = await manager.findOne(Book, {
-          where: { id: cartItem.bookId },
-          lock: { mode: 'pessimistic_write' },
-        });
+        const lockedBook = lockedBookById.get(cartItem.bookId);
 
         if (!lockedBook) {
           throw new NotFoundError('Sách trong giỏ hàng không còn tồn tại');
@@ -366,16 +371,14 @@ export class OrderService {
       }
 
       // Xoá các CartItems đã thanh toán
-      for (const cartItem of txOrderItems) {
-        await manager.delete(CartItem, { id: cartItem.id });
-      }
+      await manager.delete(CartItem, { id: In(txOrderItems.map((cartItem) => cartItem.id)) });
 
       return createdOrder;
     });
 
     // 8. Reload Order kèm relations để trả về cho client
     const result = await this.orderRepository.findByIdAndUserId(savedOrder.id, userId);
-    await this.sendOrderConfirmationEmail(result!, dto.email || checkoutUser?.email);
+    this.queueOrderConfirmationEmail(result!, dto.email || checkoutUser?.email);
     return result!;
   }
 
@@ -412,11 +415,16 @@ export class OrderService {
     const savedOrder = await AppDataSource.transaction(async (manager: EntityManager) => {
       const itemsData: Array<{ bookId: string; quantity: number; price: number; subTotal: number }> = [];
 
+      const lockedBooks: Book[] = await manager
+        .getRepository(Book)
+        .createQueryBuilder('book')
+        .where('book.id IN (:...bookIds)', { bookIds: dto.guestItems!.map((item) => item.bookId) })
+        .setLock('pessimistic_write')
+        .getMany();
+      const lockedBookById = new Map(lockedBooks.map((book) => [book.id, book]));
+
       for (const item of dto.guestItems!) {
-        const lockedBook = await manager.findOne(Book, {
-          where: { id: item.bookId },
-          lock: { mode: 'pessimistic_write' },
-        });
+        const lockedBook = lockedBookById.get(item.bookId);
 
         if (!lockedBook) throw new NotFoundError('Sách không còn tồn tại');
 
@@ -475,7 +483,7 @@ export class OrderService {
     });
 
     const result = await this.orderRepository.findByIdAndUserId(savedOrder.id, userId);
-    await this.sendOrderConfirmationEmail(result!, dto.email || fallbackEmail);
+    this.queueOrderConfirmationEmail(result!, dto.email || fallbackEmail);
     return result!;
   }
 
@@ -526,11 +534,16 @@ export class OrderService {
       const savedAddress = await manager.save(Address, address);
 
       const itemsData: Array<{ bookId: string; quantity: number; price: number; subTotal: number }> = [];
+      const lockedBooks: Book[] = await manager
+        .getRepository(Book)
+        .createQueryBuilder('book')
+        .where('book.id IN (:...bookIds)', { bookIds: dto.guestItems!.map((item) => item.bookId) })
+        .setLock('pessimistic_write')
+        .getMany();
+      const lockedBookById = new Map(lockedBooks.map((book) => [book.id, book]));
+
       for (const item of dto.guestItems!) {
-        const lockedBook = await manager.findOne(Book, {
-          where: { id: item.bookId },
-          lock: { mode: 'pessimistic_write' },
-        });
+        const lockedBook = lockedBookById.get(item.bookId);
 
         if (!lockedBook) {
           throw new NotFoundError('Sách trong giỏ hàng không còn tồn tại');
@@ -600,8 +613,14 @@ export class OrderService {
     });
 
     const result = await this.orderRepository.findById(savedOrder.id);
-    await this.sendOrderConfirmationEmail(result!, dto.email);
+    this.queueOrderConfirmationEmail(result!, dto.email);
     return result!;
+  }
+
+  private queueOrderConfirmationEmail(order: Order, email?: string): void {
+    void this.sendOrderConfirmationEmail(order, email).catch((error) => {
+      console.error(`Queue order confirmation email failed for order ${order.orderCode || order.id}:`, error);
+    });
   }
 
   private async sendOrderConfirmationEmail(order: Order, email?: string): Promise<void> {
