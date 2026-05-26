@@ -67,7 +67,7 @@ export const transporter = nodemailer.createTransport(smtpTransportOptions);
 
 const EMAIL_QUEUE_NAME = 'email-queue';
 const isSmtpConfigured = Boolean(env.smtp.user && env.smtp.pass);
-const isBrevoConfigured = Boolean(env.email.brevoApiKey);
+const isSendGridConfigured = Boolean(env.email.sendGridApiKey);
 
 const maskEmail = (email: string): string => {
   const [name, domain] = email.split('@');
@@ -77,8 +77,8 @@ const maskEmail = (email: string): string => {
 
 console.log(
   `Email provider: ${
-    isBrevoConfigured
-      ? 'Brevo HTTPS API'
+    isSendGridConfigured
+      ? 'SendGrid HTTPS API'
       : isSmtpConfigured
       ? `SMTP ${env.smtp.host}:${env.smtp.port} IPv${env.smtp.family}`
       : 'disabled'
@@ -134,48 +134,55 @@ function parseSender(value: string): { name?: string; email: string } {
   };
 }
 
-async function sendEmailViaBrevo(data: EmailJobData): Promise<void> {
-  if (!isBrevoConfigured) {
-    throw new Error('BREVO_API_KEY is not configured');
+async function sendEmailViaSendGrid(data: EmailJobData): Promise<void> {
+  if (!isSendGridConfigured) {
+    throw new Error('SENDGRID_API_KEY is not configured');
   }
 
-  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+  const sender = parseSender(env.email.from);
+  const content = [];
+  if (data.text) {
+    content.push({ type: 'text/plain', value: data.text });
+  }
+  if (data.html) {
+    content.push({ type: 'text/html', value: data.html });
+  }
+
+  const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
     headers: {
-      accept: 'application/json',
-      'api-key': env.email.brevoApiKey,
+      Authorization: `Bearer ${env.email.sendGridApiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      sender: parseSender(env.email.from),
-      to: [{ email: data.to }],
+      personalizations: [
+        {
+          to: [{ email: data.to }],
+        },
+      ],
+      from: sender,
       subject: data.subject,
-      ...(data.html ? { htmlContent: data.html } : { textContent: data.text || '' }),
+      content: content.length ? content : [{ type: 'text/plain', value: '' }],
     }),
   });
 
   const body = await response.text();
 
   if (!response.ok) {
-    throw new Error(`Brevo API failed with status ${response.status}: ${body}`);
+    throw new Error(`SendGrid API failed with status ${response.status}: ${body}`);
   }
 
-  try {
-    const parsed = JSON.parse(body) as { messageId?: string };
-    console.log(`Email sent via Brevo to ${maskEmail(data.to)}: ${parsed.messageId || 'accepted'}`);
-  } catch {
-    console.log(`Email sent via Brevo to ${maskEmail(data.to)}`);
-  }
+  console.log(`Email sent via SendGrid to ${maskEmail(data.to)}: ${response.headers.get('x-message-id') || 'accepted'}`);
 }
 
 export async function dispatchEmail(jobName: string, data: EmailJobData): Promise<void> {
-  if (!isBrevoConfigured && !isSmtpConfigured) {
+  if (!isSendGridConfigured && !isSmtpConfigured) {
     console.warn(`No email provider configured. Skipping job "${jobName}" for ${data.to}.`);
     return;
   }
 
-  if (isBrevoConfigured) {
-    await sendEmailViaBrevo(data);
+  if (isSendGridConfigured) {
+    await sendEmailViaSendGrid(data);
     return;
   }
 
@@ -198,8 +205,8 @@ const emailWorker = new Worker(
   EMAIL_QUEUE_NAME,
   async (job: Job<EmailJobData>) => {
     try {
-      if (isBrevoConfigured) {
-        await sendEmailViaBrevo(job.data);
+      if (isSendGridConfigured) {
+        await sendEmailViaSendGrid(job.data);
         return;
       }
 
