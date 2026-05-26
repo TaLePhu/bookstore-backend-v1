@@ -66,6 +66,7 @@ export interface EnvConfig {
   // Email
   email: {
     from: string;
+    brevoApiKey: string;
   };
 
   // Cloudinary
@@ -167,6 +168,7 @@ function parseEnv(): EnvConfig {
 
     email: {
       from: process.env['EMAIL_FROM'] || process.env['SMTP_USER'] || 'no-reply@example.com',
+      brevoApiKey: process.env['BREVO_API_KEY'] || '',
     },
 
     cloudinary: {

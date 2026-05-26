@@ -67,6 +67,7 @@ export const transporter = nodemailer.createTransport(smtpTransportOptions);
 
 const EMAIL_QUEUE_NAME = 'email-queue';
 const isSmtpConfigured = Boolean(env.smtp.user && env.smtp.pass);
+const isBrevoConfigured = Boolean(env.email.brevoApiKey);
 
 const maskEmail = (email: string): string => {
   const [name, domain] = email.split('@');
@@ -75,7 +76,13 @@ const maskEmail = (email: string): string => {
 };
 
 console.log(
-  `Email provider: ${isSmtpConfigured ? `SMTP ${env.smtp.host}:${env.smtp.port} IPv${env.smtp.family}` : 'disabled'}`
+  `Email provider: ${
+    isBrevoConfigured
+      ? 'Brevo HTTPS API'
+      : isSmtpConfigured
+      ? `SMTP ${env.smtp.host}:${env.smtp.port} IPv${env.smtp.family}`
+      : 'disabled'
+  }`
 );
 
 export const emailQueue = new Queue(EMAIL_QUEUE_NAME, {
@@ -115,9 +122,60 @@ async function sendEmailNow(data: EmailJobData): Promise<void> {
   console.log(`Email sent to ${maskEmail(to)}: ${info.messageId}`);
 }
 
+function parseSender(value: string): { name?: string; email: string } {
+  const match = value.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
+  if (!match) {
+    return { email: value.trim() };
+  }
+
+  return {
+    name: match[1]?.trim() || undefined,
+    email: match[2].trim(),
+  };
+}
+
+async function sendEmailViaBrevo(data: EmailJobData): Promise<void> {
+  if (!isBrevoConfigured) {
+    throw new Error('BREVO_API_KEY is not configured');
+  }
+
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'api-key': env.email.brevoApiKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      sender: parseSender(env.email.from),
+      to: [{ email: data.to }],
+      subject: data.subject,
+      ...(data.html ? { htmlContent: data.html } : { textContent: data.text || '' }),
+    }),
+  });
+
+  const body = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`Brevo API failed with status ${response.status}: ${body}`);
+  }
+
+  try {
+    const parsed = JSON.parse(body) as { messageId?: string };
+    console.log(`Email sent via Brevo to ${maskEmail(data.to)}: ${parsed.messageId || 'accepted'}`);
+  } catch {
+    console.log(`Email sent via Brevo to ${maskEmail(data.to)}`);
+  }
+}
+
 export async function dispatchEmail(jobName: string, data: EmailJobData): Promise<void> {
-  if (!isSmtpConfigured) {
+  if (!isBrevoConfigured && !isSmtpConfigured) {
     console.warn(`No email provider configured. Skipping job "${jobName}" for ${data.to}.`);
+    return;
+  }
+
+  if (isBrevoConfigured) {
+    await sendEmailViaBrevo(data);
     return;
   }
 
@@ -140,6 +198,11 @@ const emailWorker = new Worker(
   EMAIL_QUEUE_NAME,
   async (job: Job<EmailJobData>) => {
     try {
+      if (isBrevoConfigured) {
+        await sendEmailViaBrevo(job.data);
+        return;
+      }
+
       await sendEmailNow(job.data);
     } catch (error) {
       console.error(`Failed to send email to ${job.data.to}:`, error);
