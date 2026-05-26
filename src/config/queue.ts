@@ -67,7 +67,7 @@ export const transporter = nodemailer.createTransport(smtpTransportOptions);
 
 const EMAIL_QUEUE_NAME = 'email-queue';
 const isSmtpConfigured = Boolean(env.smtp.user && env.smtp.pass);
-const isMailjetConfigured = Boolean(env.email.mailjetApiKey && env.email.mailjetSecretKey);
+const isMailerSendConfigured = Boolean(env.email.mailerSendApiToken);
 
 const maskEmail = (email: string): string => {
   const [name, domain] = email.split('@');
@@ -77,8 +77,8 @@ const maskEmail = (email: string): string => {
 
 console.log(
   `Email provider: ${
-    isMailjetConfigured
-      ? 'Mailjet HTTPS API'
+    isMailerSendConfigured
+      ? 'MailerSend HTTPS API'
       : isSmtpConfigured
       ? `SMTP ${env.smtp.host}:${env.smtp.port} IPv${env.smtp.family}`
       : 'disabled'
@@ -134,65 +134,49 @@ function parseSender(value: string): { name?: string; email: string } {
   };
 }
 
-async function sendEmailViaMailjet(data: EmailJobData): Promise<void> {
-  if (!isMailjetConfigured) {
-    throw new Error('MAILJET_API_KEY or MAILJET_SECRET_KEY is not configured');
+async function sendEmailViaMailerSend(data: EmailJobData): Promise<void> {
+  if (!isMailerSendConfigured) {
+    throw new Error('MAILERSEND_API_TOKEN is not configured');
   }
 
   const sender = parseSender(env.email.from);
-  const auth = Buffer.from(`${env.email.mailjetApiKey}:${env.email.mailjetSecretKey}`).toString('base64');
 
-  const response = await fetch('https://api.mailjet.com/v3.1/send', {
+  const response = await fetch('https://api.mailersend.com/v1/email', {
     method: 'POST',
     headers: {
-      Authorization: `Basic ${auth}`,
+      Authorization: `Bearer ${env.email.mailerSendApiToken}`,
+      'X-Requested-With': 'XMLHttpRequest',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      Messages: [
-        {
-          From: {
-            Email: sender.email,
-            ...(sender.name ? { Name: sender.name } : {}),
-          },
-          To: [{ Email: data.to }],
-          Subject: data.subject,
-          TextPart: data.text,
-          HTMLPart: data.html,
-        },
-      ],
+      from: {
+        email: sender.email,
+        ...(sender.name ? { name: sender.name } : {}),
+      },
+      to: [{ email: data.to }],
+      subject: data.subject,
+      text: data.text,
+      html: data.html,
     }),
   });
 
   const body = await response.text();
 
   if (!response.ok) {
-    throw new Error(`Mailjet API failed with status ${response.status}: ${body}`);
+    throw new Error(`MailerSend API failed with status ${response.status}: ${body}`);
   }
 
-  try {
-    const parsed = JSON.parse(body) as {
-      Messages?: Array<{ To?: Array<{ MessageID?: number | string; MessageUUID?: string }> }>;
-    };
-    const message = parsed.Messages?.[0]?.To?.[0];
-    console.log(`Email sent via Mailjet to ${maskEmail(data.to)}: ${message?.MessageUUID || message?.MessageID || 'accepted'}`);
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      console.log(`Email sent via Mailjet to ${maskEmail(data.to)}`);
-      return;
-    }
-    throw error;
-  }
+  console.log(`Email sent via MailerSend to ${maskEmail(data.to)}: ${response.headers.get('x-message-id') || 'accepted'}`);
 }
 
 export async function dispatchEmail(jobName: string, data: EmailJobData): Promise<void> {
-  if (!isMailjetConfigured && !isSmtpConfigured) {
+  if (!isMailerSendConfigured && !isSmtpConfigured) {
     console.warn(`No email provider configured. Skipping job "${jobName}" for ${data.to}.`);
     return;
   }
 
-  if (isMailjetConfigured) {
-    await sendEmailViaMailjet(data);
+  if (isMailerSendConfigured) {
+    await sendEmailViaMailerSend(data);
     return;
   }
 
@@ -215,8 +199,8 @@ const emailWorker = new Worker(
   EMAIL_QUEUE_NAME,
   async (job: Job<EmailJobData>) => {
     try {
-      if (isMailjetConfigured) {
-        await sendEmailViaMailjet(job.data);
+      if (isMailerSendConfigured) {
+        await sendEmailViaMailerSend(job.data);
         return;
       }
 

@@ -66,8 +66,7 @@ export interface EnvConfig {
   // Email
   email: {
     from: string;
-    mailjetApiKey: string;
-    mailjetSecretKey: string;
+    mailerSendApiToken: string;
   };
 
   // Cloudinary
@@ -169,8 +168,7 @@ function parseEnv(): EnvConfig {
 
     email: {
       from: process.env['EMAIL_FROM'] || process.env['SMTP_USER'] || 'no-reply@example.com',
-      mailjetApiKey: process.env['MAILJET_API_KEY'] || '',
-      mailjetSecretKey: process.env['MAILJET_SECRET_KEY'] || '',
+      mailerSendApiToken: process.env['MAILERSEND_API_TOKEN'] || '',
     },
 
     cloudinary: {
