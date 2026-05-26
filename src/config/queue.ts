@@ -67,7 +67,7 @@ export const transporter = nodemailer.createTransport(smtpTransportOptions);
 
 const EMAIL_QUEUE_NAME = 'email-queue';
 const isSmtpConfigured = Boolean(env.smtp.user && env.smtp.pass);
-const isSendGridConfigured = Boolean(env.email.sendGridApiKey);
+const isMailjetConfigured = Boolean(env.email.mailjetApiKey && env.email.mailjetSecretKey);
 
 const maskEmail = (email: string): string => {
   const [name, domain] = email.split('@');
@@ -77,8 +77,8 @@ const maskEmail = (email: string): string => {
 
 console.log(
   `Email provider: ${
-    isSendGridConfigured
-      ? 'SendGrid HTTPS API'
+    isMailjetConfigured
+      ? 'Mailjet HTTPS API'
       : isSmtpConfigured
       ? `SMTP ${env.smtp.host}:${env.smtp.port} IPv${env.smtp.family}`
       : 'disabled'
@@ -134,55 +134,65 @@ function parseSender(value: string): { name?: string; email: string } {
   };
 }
 
-async function sendEmailViaSendGrid(data: EmailJobData): Promise<void> {
-  if (!isSendGridConfigured) {
-    throw new Error('SENDGRID_API_KEY is not configured');
+async function sendEmailViaMailjet(data: EmailJobData): Promise<void> {
+  if (!isMailjetConfigured) {
+    throw new Error('MAILJET_API_KEY or MAILJET_SECRET_KEY is not configured');
   }
 
   const sender = parseSender(env.email.from);
-  const content = [];
-  if (data.text) {
-    content.push({ type: 'text/plain', value: data.text });
-  }
-  if (data.html) {
-    content.push({ type: 'text/html', value: data.html });
-  }
+  const auth = Buffer.from(`${env.email.mailjetApiKey}:${env.email.mailjetSecretKey}`).toString('base64');
 
-  const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+  const response = await fetch('https://api.mailjet.com/v3.1/send', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${env.email.sendGridApiKey}`,
+      Authorization: `Basic ${auth}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      personalizations: [
+      Messages: [
         {
-          to: [{ email: data.to }],
+          From: {
+            Email: sender.email,
+            ...(sender.name ? { Name: sender.name } : {}),
+          },
+          To: [{ Email: data.to }],
+          Subject: data.subject,
+          TextPart: data.text,
+          HTMLPart: data.html,
         },
       ],
-      from: sender,
-      subject: data.subject,
-      content: content.length ? content : [{ type: 'text/plain', value: '' }],
     }),
   });
 
   const body = await response.text();
 
   if (!response.ok) {
-    throw new Error(`SendGrid API failed with status ${response.status}: ${body}`);
+    throw new Error(`Mailjet API failed with status ${response.status}: ${body}`);
   }
 
-  console.log(`Email sent via SendGrid to ${maskEmail(data.to)}: ${response.headers.get('x-message-id') || 'accepted'}`);
+  try {
+    const parsed = JSON.parse(body) as {
+      Messages?: Array<{ To?: Array<{ MessageID?: number | string; MessageUUID?: string }> }>;
+    };
+    const message = parsed.Messages?.[0]?.To?.[0];
+    console.log(`Email sent via Mailjet to ${maskEmail(data.to)}: ${message?.MessageUUID || message?.MessageID || 'accepted'}`);
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      console.log(`Email sent via Mailjet to ${maskEmail(data.to)}`);
+      return;
+    }
+    throw error;
+  }
 }
 
 export async function dispatchEmail(jobName: string, data: EmailJobData): Promise<void> {
-  if (!isSendGridConfigured && !isSmtpConfigured) {
+  if (!isMailjetConfigured && !isSmtpConfigured) {
     console.warn(`No email provider configured. Skipping job "${jobName}" for ${data.to}.`);
     return;
   }
 
-  if (isSendGridConfigured) {
-    await sendEmailViaSendGrid(data);
+  if (isMailjetConfigured) {
+    await sendEmailViaMailjet(data);
     return;
   }
 
@@ -205,8 +215,8 @@ const emailWorker = new Worker(
   EMAIL_QUEUE_NAME,
   async (job: Job<EmailJobData>) => {
     try {
-      if (isSendGridConfigured) {
-        await sendEmailViaSendGrid(job.data);
+      if (isMailjetConfigured) {
+        await sendEmailViaMailjet(job.data);
         return;
       }
 
