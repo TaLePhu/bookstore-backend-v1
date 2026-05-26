@@ -1,5 +1,9 @@
 import { Queue, Worker, Job } from 'bullmq';
+import dns from 'node:dns';
+import net from 'node:net';
+import tls from 'node:tls';
 import nodemailer from 'nodemailer';
+import SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { getEnv } from './env';
 
 const env = getEnv();
@@ -11,10 +15,45 @@ const connection = {
   tls: env.redis.tls ? {} : undefined,
 };
 
-export const transporter = nodemailer.createTransport({
+function getSmtpSocket(
+  options: SMTPTransport.Options,
+  callback: (err: Error | null, socketOptions?: { connection: net.Socket | tls.TLSSocket; host: string; servername: string }) => void
+): void {
+  const host = options.host || env.smtp.host;
+  const port = options.port || env.smtp.port;
+
+  dns.lookup(host, { family: env.smtp.family }, (dnsError, address) => {
+    if (dnsError) {
+      callback(dnsError);
+      return;
+    }
+
+    const socket = options.secure
+      ? tls.connect({ host: address, port, servername: host })
+      : net.connect({ host: address, port });
+
+    const onError = (error: Error) => {
+      socket.destroy();
+      callback(error);
+    };
+
+    socket.once('error', onError);
+    socket.once('connect', () => {
+      socket.removeListener('error', onError);
+      callback(null, {
+        connection: socket,
+        host,
+        servername: host,
+      });
+    });
+  });
+}
+
+const smtpTransportOptions: SMTPTransport.Options = {
   host: env.smtp.host,
   port: env.smtp.port,
   secure: env.smtp.port === 465,
+  getSocket: getSmtpSocket,
   tls: {
     rejectUnauthorized: env.smtp.rejectUnauthorized,
   },
@@ -22,7 +61,9 @@ export const transporter = nodemailer.createTransport({
     user: env.smtp.user,
     pass: env.smtp.pass,
   },
-});
+};
+
+export const transporter = nodemailer.createTransport(smtpTransportOptions);
 
 const EMAIL_QUEUE_NAME = 'email-queue';
 const isSmtpConfigured = Boolean(env.smtp.user && env.smtp.pass);

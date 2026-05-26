@@ -57,6 +57,7 @@ export interface EnvConfig {
   smtp: {
     host: string;
     port: number;
+    family: 4 | 6;
     user: string;
     pass: string;
     rejectUnauthorized: boolean;
@@ -158,6 +159,7 @@ function parseEnv(): EnvConfig {
     smtp: {
       host: process.env['SMTP_HOST'] || 'smtp.gmail.com',
       port: parseInt(process.env['SMTP_PORT'] || '587', 10),
+      family: process.env['SMTP_FAMILY'] === '6' ? 6 : 4,
       user: process.env['SMTP_USER'] || '',
       pass: process.env['SMTP_PASS'] || '',
       rejectUnauthorized: process.env['SMTP_TLS_REJECT_UNAUTHORIZED'] !== 'false',
