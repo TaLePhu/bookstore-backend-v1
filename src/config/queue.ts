@@ -26,7 +26,6 @@ export const transporter = nodemailer.createTransport({
 
 const EMAIL_QUEUE_NAME = 'email-queue';
 const isSmtpConfigured = Boolean(env.smtp.user && env.smtp.pass);
-const isResendConfigured = Boolean(env.email.resendApiKey);
 
 export const emailQueue = new Queue(EMAIL_QUEUE_NAME, {
   connection,
@@ -56,7 +55,7 @@ async function sendEmailNow(data: EmailJobData): Promise<void> {
 
   const { to, subject, text, html } = data;
   const info = await transporter.sendMail({
-    from: `"BookStore Server" <${env.smtp.user}>`,
+    from: env.email.from,
     to,
     subject,
     text,
@@ -65,52 +64,15 @@ async function sendEmailNow(data: EmailJobData): Promise<void> {
   console.log(`Message sent: ${info.messageId}`);
 }
 
-async function sendEmailViaResend(data: EmailJobData): Promise<void> {
-  if (!isResendConfigured) {
-    throw new Error('RESEND_API_KEY is not configured');
-  }
-
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.email.resendApiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: env.email.from,
-      to: [data.to],
-      subject: data.subject,
-      text: data.text,
-      html: data.html,
-    }),
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Resend API failed with status ${response.status}: ${body}`);
-  }
-}
-
 export async function dispatchEmail(jobName: string, data: EmailJobData): Promise<void> {
-  if (!isSmtpConfigured && !isResendConfigured) {
+  if (!isSmtpConfigured) {
     console.warn(`No email provider configured. Skipping job "${jobName}" for ${data.to}.`);
     return;
   }
 
   try {
-    if (isResendConfigured) {
-      await sendEmailViaResend(data);
-      return;
-    }
-  } catch (error) {
-    console.error(`Resend send failed for job "${jobName}". Falling back to SMTP/queue retry.`, error);
-  }
-
-  try {
-    if (isSmtpConfigured) {
-      await sendEmailNow(data);
-      return;
-    }
+    await sendEmailNow(data);
+    return;
   } catch (error) {
     console.error(`Direct SMTP send failed for job "${jobName}". Falling back to queue retry.`, error);
   }
@@ -127,11 +89,6 @@ const emailWorker = new Worker(
   EMAIL_QUEUE_NAME,
   async (job: Job<EmailJobData>) => {
     try {
-      if (isResendConfigured) {
-        await sendEmailViaResend(job.data);
-        return;
-      }
-
       await sendEmailNow(job.data);
     } catch (error) {
       console.error(`Failed to send email to ${job.data.to}:`, error);

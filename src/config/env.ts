@@ -62,10 +62,9 @@ export interface EnvConfig {
     rejectUnauthorized: boolean;
   };
 
-  // Email provider (API)
+  // Email
   email: {
     from: string;
-    resendApiKey: string;
   };
 
   // Cloudinary
@@ -166,7 +165,6 @@ function parseEnv(): EnvConfig {
 
     email: {
       from: process.env['EMAIL_FROM'] || process.env['SMTP_USER'] || 'no-reply@example.com',
-      resendApiKey: process.env['RESEND_API_KEY'] || '',
     },
 
     cloudinary: {
