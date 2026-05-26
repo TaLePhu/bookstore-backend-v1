@@ -20,6 +20,12 @@ import { dispatchEmail } from '@config/queue';
 import redisConfig from '@config/redis';
 import { BookService } from '@services/BookService';
 
+const maskEmail = (email: string): string => {
+  const [name, domain] = email.split('@');
+  if (!name || !domain) return email;
+  return `${name.slice(0, 2)}***@${domain}`;
+};
+
 const isCustomerCancelRequestLog = (log: OrderStatusLog): boolean =>
   log.changedBy === null &&
   log.fromStatus === log.toStatus &&
@@ -618,6 +624,12 @@ export class OrderService {
   }
 
   private queueOrderConfirmationEmail(order: Order, email?: string): void {
+    if (!email) {
+      console.warn(`Order confirmation email skipped for order ${order.orderCode || order.id}: missing recipient email`);
+      return;
+    }
+
+    console.log(`Queueing order confirmation email for order ${order.orderCode || order.id} to ${maskEmail(email)}`);
     void this.sendOrderConfirmationEmail(order, email).catch((error) => {
       console.error(`Queue order confirmation email failed for order ${order.orderCode || order.id}:`, error);
     });

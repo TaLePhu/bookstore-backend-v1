@@ -68,6 +68,16 @@ export const transporter = nodemailer.createTransport(smtpTransportOptions);
 const EMAIL_QUEUE_NAME = 'email-queue';
 const isSmtpConfigured = Boolean(env.smtp.user && env.smtp.pass);
 
+const maskEmail = (email: string): string => {
+  const [name, domain] = email.split('@');
+  if (!name || !domain) return email;
+  return `${name.slice(0, 2)}***@${domain}`;
+};
+
+console.log(
+  `Email provider: ${isSmtpConfigured ? `SMTP ${env.smtp.host}:${env.smtp.port} IPv${env.smtp.family}` : 'disabled'}`
+);
+
 export const emailQueue = new Queue(EMAIL_QUEUE_NAME, {
   connection,
   defaultJobOptions: {
@@ -102,7 +112,7 @@ async function sendEmailNow(data: EmailJobData): Promise<void> {
     text,
     html,
   });
-  console.log(`Message sent: ${info.messageId}`);
+  console.log(`Email sent to ${maskEmail(to)}: ${info.messageId}`);
 }
 
 export async function dispatchEmail(jobName: string, data: EmailJobData): Promise<void> {
