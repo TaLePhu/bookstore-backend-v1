@@ -248,7 +248,7 @@ export class BookService {
       title: source === 'personalized' ? 'Gợi ý theo gu gần đây của bạn' : 'Sách được nhiều độc giả quan tâm',
       subtitle: source === 'personalized'
         ? 'Dựa trên lịch sử tìm kiếm, tư vấn AI và những sách bạn từng quan tâm.'
-        : 'Chọn từ các sách còn hàng, bán ổn và có tín hiệu đánh giá tốt, không dùng gợi ý ngẫu nhiên.',
+        : 'Một vài lựa chọn dễ bắt đầu, được chọn từ các sách còn hàng và đang được nhiều độc giả chú ý.',
       books: selected.map((item) => ({ ...item.book, reason: item.reason })),
     };
   }
@@ -386,24 +386,75 @@ export class BookService {
     const authorWeight = authorKey ? profile.authorWeights.get(authorKey) || 0 : 0;
     const bookText = this.normalizeSignal(`${book.title} ${book.category?.name || ''} ${book.description || ''}`);
     const matchedQueryToken = [...profile.queryTokens].find((token) => bookText.includes(token));
+    const recentQuery = profile.queryTexts[0] ? this.shortenText(profile.queryTexts[0], 54) : '';
+    const tone = this.getBookRecommendationTone(book);
 
-    if (matchedQueryToken && profile.queryTexts.length > 0) {
-      return `Gần đây bạn quan tâm đến "${this.shortenText(profile.queryTexts[0], 54)}", nên cuốn này được ưu tiên vì có chủ đề khá gần với mạch tìm kiếm đó.`;
+    if (matchedQueryToken && recentQuery) {
+      return `Gần đây bạn có nhắc đến "${recentQuery}", nên mình đưa cuốn này vào vì nó giữ được ${tone.personalized}. Đây là một hướng đọc gần mạch bạn đang quan tâm, không phải gợi ý chọn đại từ danh sách phổ biến.`;
     }
 
     if (categoryWeight > 0 && book.category?.name) {
-      return `Bạn từng quan tâm đến nhóm ${book.category.name}, nên cuốn này là một hướng đọc gần gu hơn so với gợi ý phổ biến thông thường.`;
+      return `Bạn từng quan tâm đến nhóm ${book.category.name}, nên cuốn này khá đáng để thử tiếp. Nó vẫn nằm gần gu đọc cũ, nhưng có một sắc thái riêng để bạn không bị lặp lại đúng một kiểu sách.`;
     }
 
     if (authorWeight > 0 && book.author) {
-      return `Bạn từng chọn hoặc quan tâm đến sách của ${book.author}, nên đây là lựa chọn hợp lý nếu muốn tiếp tục giọng viết quen thuộc.`;
+      return `Bạn từng chọn hoặc quan tâm đến sách của ${book.author}, nên mình ưu tiên cuốn này như một cách tiếp tục giọng viết quen thuộc. Nếu bạn đã hợp văn phong của tác giả, đây là lựa chọn dễ vào hơn một gợi ý hoàn toàn mới.`;
+    }
+
+    if (book.category?.name) {
+      return tone.category;
     }
 
     if (Number(book.rating || 0) >= 4) {
-      return 'Cuốn này có tín hiệu đánh giá tốt và vẫn còn hàng, phù hợp để tham khảo khi bạn chưa có nhu cầu thật cụ thể.';
+      return 'Cuốn này là lựa chọn khá an toàn để bắt đầu vì được nhiều độc giả đánh giá tốt. Nếu bạn chưa có gu đọc thật rõ, một đầu sách dễ tiếp cận như vậy sẽ giúp bạn thử trước mà ít rủi ro hơn.';
     }
 
-    return 'Cuốn này đang có tín hiệu quan tâm ổn trong kho, được chọn làm gợi ý an toàn thay vì lấy ngẫu nhiên.';
+    return 'Mình chọn cuốn này như một gợi ý dễ thử khi bạn chưa có nhu cầu thật cụ thể. Nó có độ quan tâm ổn trong kho và phù hợp để mở rộng lựa chọn trước khi lọc sâu hơn theo thể loại hoặc cảm xúc đọc.';
+  }
+
+  private getBookRecommendationTone(book: BookResponse): { personalized: string; category: string } {
+    const category = this.normalizeSignal(book.category?.name);
+    const title = book.title;
+
+    if (/(van hoc|tieu thuyet|truyen|fiction|classic|kinh dien)/.test(category)) {
+      return {
+        personalized: 'mạch cảm xúc và chất kể chuyện gần với điều bạn đang tìm',
+        category: `Nếu bạn muốn một cuốn có màu văn học rõ hơn, ${title} là lựa chọn đáng cân nhắc vì thường hợp để đọc chậm và theo cảm xúc. Cuốn này phù hợp khi bạn muốn tìm một câu chuyện có dư âm thay vì chỉ đọc lướt cho nhanh.`,
+      };
+    }
+
+    if (/(kinh te|kinh doanh|khoi nghiep|quan tri|marketing|tai chinh)/.test(category)) {
+      return {
+        personalized: 'tính thực tế và hướng đọc có thể áp dụng',
+        category: `Cuốn này hợp nếu bạn muốn đọc để lấy thêm góc nhìn thực tế cho công việc hoặc kinh doanh. Mình ưu tiên nó vì nhóm sách này thường hữu ích nhất khi nội dung đủ rõ để đọc xong có thể rút ra cách nghĩ hoặc cách làm.`,
+      };
+    }
+
+    if (/(ky nang|self help|phat trien|tam ly|song dep)/.test(category)) {
+      return {
+        personalized: 'hướng đọc dễ áp dụng vào đời sống hằng ngày',
+        category: `Đây là lựa chọn dễ bắt đầu nếu bạn đang muốn đọc thứ gì đó gần với đời sống và có thể áp dụng dần. Cuốn này hợp với lúc bạn cần một gợi ý nhẹ nhưng vẫn có giá trị suy ngẫm sau khi đọc.`,
+      };
+    }
+
+    if (/(thieu nhi|tre em|manga|comic|truyen tranh)/.test(category)) {
+      return {
+        personalized: 'nhịp đọc nhẹ và cảm giác dễ tiếp cận',
+        category: `Cuốn này có hướng đọc nhẹ nhàng, dễ tiếp cận, hợp để đọc thư giãn hoặc chọn cho bạn đọc nhỏ tuổi. Mình ưu tiên những lựa chọn như vậy khi cần một cuốn không quá nặng nhưng vẫn tạo được hứng thú đọc.`,
+      };
+    }
+
+    if (/(lich su|van hoa|xa hoi|chinh tri|khoa hoc)/.test(category)) {
+      return {
+        personalized: 'chủ đề tìm hiểu có chiều sâu hơn',
+        category: `Nếu bạn muốn một cuốn giúp mở rộng hiểu biết thay vì chỉ giải trí, đây là lựa chọn đáng xem qua. Nhóm sách này phù hợp khi bạn muốn đọc chậm, tích lũy thêm bối cảnh và có thêm chất liệu để suy nghĩ.`,
+      };
+    }
+
+    return {
+      personalized: 'chủ đề và cảm giác đọc tương đối gần với gu gần đây của bạn',
+      category: `Cuốn này được chọn vì có chủ đề rõ và không quá kén người đọc. Nếu bạn đang lướt để tìm một đầu sách dễ bắt đầu, đây là lựa chọn khá an toàn trước khi lọc sâu hơn theo gu cá nhân.`,
+    };
   }
 
   private pickDiverseRecommendations<T extends { book: BookResponse; score: number; reason: string }>(
