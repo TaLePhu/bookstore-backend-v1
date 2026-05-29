@@ -480,8 +480,11 @@ export class BookService {
     if (!Array.isArray(messages)) return [];
 
     return messages
-      .filter((message): message is { type?: unknown; text?: unknown } => Boolean(message && typeof message === 'object'))
-      .filter((message) => message.type === 'user' && typeof message.text === 'string')
+      .filter((message): message is { type: 'user'; text: string } => {
+        if (!message || typeof message !== 'object') return false;
+        const item = message as { type?: unknown; text?: unknown };
+        return item.type === 'user' && typeof item.text === 'string';
+      })
       .map((message) => message.text.trim())
       .filter(Boolean)
       .slice(-6);
