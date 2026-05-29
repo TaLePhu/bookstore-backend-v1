@@ -8,22 +8,20 @@ export class ExtendUserBehaviorsForRecommendations1779700000000 implements Migra
     await queryRunner.query(`ALTER TABLE "user_behaviors" ALTER COLUMN "book_id" DROP NOT NULL`);
     await queryRunner.query(`ALTER TABLE "user_behaviors" ADD COLUMN IF NOT EXISTS "query_text" text`);
     await queryRunner.query(`ALTER TABLE "user_behaviors" ADD COLUMN IF NOT EXISTS "metadata" jsonb`);
-    await queryRunner.query(`
-      DO $$
-      DECLARE enum_name text;
-      BEGIN
-        SELECT typname INTO enum_name
-        FROM pg_type
-        WHERE typname IN ('user_behaviors_behavior_type_enum', 'behavior_type_enum')
-        ORDER BY CASE WHEN typname = 'user_behaviors_behavior_type_enum' THEN 0 ELSE 1 END
-        LIMIT 1;
 
-        IF enum_name IS NOT NULL THEN
-          EXECUTE format('ALTER TYPE "public".%I ADD VALUE IF NOT EXISTS ''SEARCH''', enum_name);
-          EXECUTE format('ALTER TYPE "public".%I ADD VALUE IF NOT EXISTS ''AI_ADVISOR_QUERY''', enum_name);
-        END IF;
-      END $$;
+    const rows = await queryRunner.query(`
+      SELECT typname
+      FROM pg_type
+      WHERE typname IN ('user_behaviors_behavior_type_enum', 'behavior_type_enum')
+      ORDER BY CASE WHEN typname = 'user_behaviors_behavior_type_enum' THEN 0 ELSE 1 END
+      LIMIT 1
     `);
+    const enumName = rows?.[0]?.typname;
+    if (enumName === 'user_behaviors_behavior_type_enum' || enumName === 'behavior_type_enum') {
+      await queryRunner.query(`ALTER TYPE "public"."${enumName}" ADD VALUE IF NOT EXISTS 'SEARCH'`);
+      await queryRunner.query(`ALTER TYPE "public"."${enumName}" ADD VALUE IF NOT EXISTS 'AI_ADVISOR_QUERY'`);
+    }
+
     await queryRunner.query(`CREATE INDEX IF NOT EXISTS "idx_user_behaviors_type_created_at" ON "user_behaviors" ("behavior_type", "created_at")`);
   }
 
