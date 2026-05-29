@@ -219,27 +219,17 @@ export class AIAdvisorService {
   }
 
   private getBookTheme(book: BookResponse): string {
-    const description = (book.description || '')
-      .replace(/<[^>]*>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    if (description.length > 0) {
-      const firstSentence = description.match(/.+?[.!?](\s|$)/)?.[0]?.trim() || description;
-      return firstSentence.length > 180 ? `${firstSentence.slice(0, 177).trim()}...` : firstSentence;
-    }
-
     if (book.category?.name) {
-      return `Nội dung thuộc nhóm ${book.category.name}, phù hợp để bạn bắt đầu đọc theo chủ đề này.`;
+      return `Có cùng mạch ${book.category.name}, nên hợp để bạn so sánh và chọn theo đúng gu đọc hiện tại.`;
     }
 
-    return 'Nội dung khá gần với nhu cầu bạn vừa mô tả.';
+    return 'Giữ được tinh thần của điều bạn đang tìm, nên đáng để cân nhắc trong lượt này.';
   }
 
   private buildFallbackReason(query: string, book: BookResponse): string {
-    const theme = this.getBookTheme(book);
-    const author = book.author ? ` Tác giả ${book.author} giúp phần gợi ý này có góc nhìn rõ hơn.` : '';
-    return `${theme}${author}`;
+    const categoryHint = book.category?.name ? ` theo hướng ${book.category.name}` : '';
+    const authorHint = book.author ? `, với giọng viết của ${book.author}` : '';
+    return `Mình chọn cuốn này${categoryHint}${authorHint} vì nó bám sát mạch bạn đang tìm và tạo một lựa chọn rõ ràng để so sánh với các gợi ý còn lại.`;
   }
 
   private normalizeText(value: string): string {
@@ -333,12 +323,14 @@ export class AIAdvisorService {
                     'Câu mở đầu phải phản hồi như đang trò chuyện, không dùng mẫu "Mình chọn X cuốn..." hoặc "Dựa trên nhu cầu...".',
                     'Ví dụ câu mở đầu tốt: "Chủ đề quê hương đất nước thì mình sẽ nghiêng về những cuốn có chất đời sống Việt Nam, ký ức tuổi thơ và cảm giác gần gũi."',
                     'Nếu đây là câu hỏi nối tiếp, hãy nối mạch bằng các cụm tự nhiên như "Nếu muốn đổi sang lựa chọn nhẹ hơn...", "Vậy mình chuyển hướng sang...", "Theo gu bạn vừa nói...".',
-                    'Với mỗi sách, giải thích ngắn nội dung sách liên quan gì tới điều khách đang tìm. Không chỉ nói chung chung là phù hợp.',
+                    'Trong answer, KHÔNG tóm tắt lại mô tả/nội dung cốt truyện của sách vì phần thẻ sách bên dưới đã có mô tả.',
+                    'Mỗi bullet trong answer chỉ nói vai trò tư vấn: vì sao nên cân nhắc cuốn đó theo nhu cầu, cảm giác đọc, độ dễ đọc, góc nhìn, mức phù hợp để bắt đầu hoặc để so sánh.',
+                    'Không viết dạng: "Tên sách là tác phẩm..." hoặc "kể về...".',
                     'Nếu recommendations có 1 sách thì câu trả lời chỉ nói về 1 sách. Nếu có nhiều sách thì nói rõ từng sách rất ngắn gọn.',
                     'Ưu tiên: đúng chủ đề người dùng hỏi, còn hàng, mô tả sát nhu cầu, không trùng sách đã gợi ý trước trừ khi khách muốn tương tự.',
                     'Trả về JSON thuần, không markdown, không giải thích ngoài JSON.',
                     'Schema:',
-                    '{"answer":"câu mở đầu tự nhiên, không máy móc\\n- Tên sách 1: giải thích ngắn\\n- Tên sách 2: giải thích ngắn","recommendations":[{"id":"book-id","reason":"lý do ngắn, cụ thể theo nhu cầu"}]}',
+                    '{"answer":"câu mở đầu tự nhiên, không máy móc\\n- Tên sách 1: lý do tư vấn ngắn, không tóm tắt sách\\n- Tên sách 2: lý do tư vấn ngắn, không tóm tắt sách","recommendations":[{"id":"book-id","reason":"lý do ngắn, cụ thể theo nhu cầu"}]}',
                     `Lịch sử hội thoại:\n${historyContext}`,
                     `Tin nhắn mới nhất của khách: ${question}`,
                     `Danh sách ứng viên trong kho:\n${bookContext}`,
@@ -435,14 +427,33 @@ export class AIAdvisorService {
       const book = books[0];
       return [
         intro,
-        `- ${book.title}: ${this.getBookTheme(book)} Đây là lựa chọn dễ bắt đầu trước, nhất là khi bạn muốn đọc một cuốn đi thẳng vào chủ đề.`,
+        `- ${book.title}: ${this.buildAdvisorAngle(book)} Đây là lựa chọn dễ bắt đầu trước nếu bạn muốn kiểm tra xem hướng này có hợp gu không.`,
       ].join('\n');
     }
 
     const details = books
-      .map((book) => `- ${book.title}: ${this.getBookTheme(book)}`)
+      .map((book) => `- ${book.title}: ${this.buildAdvisorAngle(book)}`)
       .join('\n');
     return `${intro}\n${details}`;
+  }
+
+  private buildAdvisorAngle(book: AdvisorRecommendation): string {
+    const categoryName = book.category?.name;
+    const author = book.author;
+
+    if (categoryName && author) {
+      return `Cuốn này đáng cân nhắc vì giữ đúng hướng ${categoryName} nhưng có giọng riêng của ${author}, giúp bạn có thêm một góc đọc để so sánh.`;
+    }
+
+    if (categoryName) {
+      return `Cuốn này đi cùng hướng ${categoryName}, nên hợp khi bạn muốn tiếp tục đào sâu chủ đề mà không lệch khỏi nhu cầu ban đầu.`;
+    }
+
+    if (author) {
+      return `Cuốn này đáng thử vì giọng viết của ${author} tạo một sắc thái khác, giúp cuộc chọn sách bớt một màu.`;
+    }
+
+    return 'Cuốn này đáng cân nhắc vì tạo thêm một lựa chọn khác biệt nhưng vẫn không lệch khỏi mạch bạn đang tìm.';
   }
 
   private buildNaturalIntro(question: string, books: AdvisorRecommendation[]): string {
