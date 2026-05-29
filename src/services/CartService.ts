@@ -5,8 +5,10 @@ import { IBookRepository } from '@repositories/interfaces/IBookRepository';
 import { AddToCartDto } from '@dtos/cart/AddToCartDto';
 import { UpdateCartItemDto } from '@dtos/cart/UpdateCartItemDto';
 import { Cart } from '@entities/Cart';
+import { BehaviorType, UserBehavior } from '@entities/UserBehavior';
 import { NotFoundError, AppError } from '@utils/errors';
 import { TOKENS } from '@config/container';
+import { AppDataSource } from '@config/data-source';
 
 @injectable()
 export class CartService {
@@ -77,7 +79,24 @@ export class CartService {
     }
 
     // 5. Trả về giỏ hàng mới nhất (đã có items mới)
+    await this.recordCartBehavior(userId, dto.bookId, dto.quantity);
     return (await this.cartRepository.findActiveByUserId(userId))!;
+  }
+
+  private async recordCartBehavior(userId: string, bookId: string, quantity: number): Promise<void> {
+    try {
+      const behaviorRepo = AppDataSource.getRepository(UserBehavior);
+      await behaviorRepo.save(
+        behaviorRepo.create({
+          userId,
+          bookId,
+          behaviorType: BehaviorType.ADD_TO_CART,
+          metadata: { quantity },
+        })
+      );
+    } catch (error) {
+      console.warn('Record add-to-cart behavior failed:', error);
+    }
   }
 
   /**

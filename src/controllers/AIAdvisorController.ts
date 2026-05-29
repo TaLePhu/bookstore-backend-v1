@@ -2,12 +2,15 @@ import { NextFunction, Request, Response } from 'express';
 import { injectable } from 'tsyringe';
 import { AIAdvisorService } from '@services/AIAdvisorService';
 import { AIAdvisorConversationService } from '@services/AIAdvisorConversationService';
+import { BookService } from '@services/BookService';
+import { BehaviorType } from '@entities/UserBehavior';
 
 @injectable()
 export class AIAdvisorController {
   constructor(
     private aiAdvisorService: AIAdvisorService,
-    private conversationService: AIAdvisorConversationService
+    private conversationService: AIAdvisorConversationService,
+    private bookService: BookService
   ) {}
 
   advise = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -19,6 +22,10 @@ export class AIAdvisorController {
       const excludeBookIds = Array.isArray(req.body?.excludeBookIds) ? req.body.excludeBookIds : [];
 
       const result = await this.aiAdvisorService.advise(question, limit, history, excludeBookIds);
+      await this.bookService.recordUserQueryEvent(req.user?.userId, BehaviorType.AI_ADVISOR_QUERY, question, {
+        limit,
+        resultCount: result.books.length,
+      });
 
       res.status(200).json({
         success: true,

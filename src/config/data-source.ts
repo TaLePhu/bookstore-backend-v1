@@ -48,6 +48,7 @@ import { CreatePromotions1779300000000 } from '../migrations/1779300000000-Creat
 import { AddPromotionBannerImage1779400000000 } from '../migrations/1779400000000-AddPromotionBannerImage';
 import { AddReviewOrderLink1779500000000 } from '../migrations/1779500000000-AddReviewOrderLink';
 import { CreateAIAdvisorConversations1779600000000 } from '../migrations/1779600000000-CreateAIAdvisorConversations';
+import { ExtendUserBehaviorsForRecommendations1779700000000 } from '../migrations/1779700000000-ExtendUserBehaviorsForRecommendations';
 
 const env = getEnv();
 
@@ -108,6 +109,7 @@ export const AppDataSource = new DataSource({
     AddPromotionBannerImage1779400000000,
     AddReviewOrderLink1779500000000,
     CreateAIAdvisorConversations1779600000000,
+    ExtendUserBehaviorsForRecommendations1779700000000,
   ],
   subscribers: [],
   cache: false,

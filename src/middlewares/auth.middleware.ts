@@ -61,3 +61,30 @@ export async function authMiddleware(req: Request, _res: Response, next: NextFun
     next(error);
   }
 }
+
+export async function optionalAuthMiddleware(req: Request, _res: Response, next: NextFunction): Promise<void> {
+  try {
+    const authHeader = req.headers.authorization?.trim();
+    if (!authHeader) {
+      next();
+      return;
+    }
+
+    const [scheme, rawToken] = authHeader.split(/\s+/);
+    if (!scheme || scheme.toLowerCase() !== 'bearer' || !rawToken) {
+      next();
+      return;
+    }
+
+    const token = rawToken.replace(/^["']|["']$/g, '').trim();
+    if (!token || token === 'null' || token === 'undefined') {
+      next();
+      return;
+    }
+
+    req.user = TokenHelper.verifyAccessToken(token);
+    next();
+  } catch {
+    next();
+  }
+}

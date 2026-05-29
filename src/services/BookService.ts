@@ -10,12 +10,38 @@ import { UpdateBookDto } from '@dtos/book/UpdateBookDto';
 import { Book } from '@entities/Book';
 import { BookImage } from '@entities/BookImage';
 import { OrderItem } from '@entities/OrderItem';
+import { Order, OrderStatus } from '@entities/Order';
+import { BehaviorType, UserBehavior } from '@entities/UserBehavior';
+import { AIAdvisorConversation } from '@entities/AIAdvisorConversation';
 import { PromotionStatus } from '@entities/Promotion';
 import { PromotionBook } from '@entities/PromotionBook';
 import { AppDataSource } from '@config/data-source';
 import { uploadBookImages, deleteCloudinaryImages } from '@utils/cloudinary';
 import { EmbeddingSearchService } from '@services/EmbeddingSearchService';
 import { EmbeddingProviderService } from '@services/EmbeddingProviderService';
+
+type HomeRecommendationSource = 'personalized' | 'popular';
+
+interface HomeRecommendedBook extends BookResponse {
+  reason: string;
+}
+
+interface HomeRecommendationResponse {
+  source: HomeRecommendationSource;
+  title: string;
+  subtitle: string;
+  books: HomeRecommendedBook[];
+}
+
+interface RecommendationSignalProfile {
+  purchasedBookIds: Set<string>;
+  categoryWeights: Map<string, number>;
+  authorWeights: Map<string, number>;
+  queryTokens: Set<string>;
+  queryTexts: string[];
+  interactedBookWeights: Map<string, number>;
+  hasPersonalSignals: boolean;
+}
 
 @injectable()
 export class BookService {
@@ -140,6 +166,330 @@ export class BookService {
       onlyDeleted
     });
     return { data, total, page, limit };
+  }
+
+  async recordUserQueryEvent(
+    userId: string | undefined,
+    type: BehaviorType.SEARCH | BehaviorType.AI_ADVISOR_QUERY,
+    queryText: string,
+    metadata?: Record<string, unknown>
+  ): Promise<void> {
+    const trimmed = queryText.trim();
+    if (!userId || !trimmed) return;
+
+    try {
+      const behaviorRepo = AppDataSource.getRepository(UserBehavior);
+      await behaviorRepo.save(
+        behaviorRepo.create({
+          userId,
+          behaviorType: type,
+          queryText: trimmed.slice(0, 600),
+          metadata: metadata || null,
+          bookId: null,
+        })
+      );
+    } catch (error) {
+      console.warn('Record user query behavior failed:', error);
+    }
+  }
+
+  async recordUserBookEvent(
+    userId: string | undefined,
+    type: BehaviorType.VIEW | BehaviorType.CLICK,
+    bookId: string,
+    metadata?: Record<string, unknown>
+  ): Promise<void> {
+    if (!userId || !bookId) return;
+
+    try {
+      const behaviorRepo = AppDataSource.getRepository(UserBehavior);
+      await behaviorRepo.save(
+        behaviorRepo.create({
+          userId,
+          behaviorType: type,
+          bookId,
+          metadata: metadata || null,
+        })
+      );
+    } catch (error) {
+      console.warn('Record user book behavior failed:', error);
+    }
+  }
+
+  async getHomeRecommendations(userId?: string, limit: number = 4): Promise<HomeRecommendationResponse> {
+    const safeLimit = Math.min(8, Math.max(1, limit));
+    const pool = await this.getRecommendationPool(Math.max(50, safeLimit * 12));
+
+    if (pool.length === 0) {
+      return {
+        source: 'popular',
+        title: 'Gợi ý cho bạn',
+        subtitle: 'Hiện chưa có đủ dữ liệu sách để gợi ý.',
+        books: [],
+      };
+    }
+
+    const profile = userId ? await this.buildRecommendationProfile(userId) : this.emptyRecommendationProfile();
+    const scoredBooks = pool
+      .filter((book) => this.isRecommendableBook(book) && !profile.purchasedBookIds.has(book.id))
+      .map((book, index) => ({
+        book,
+        index,
+        score: this.scoreHomeRecommendation(book, profile),
+        reason: this.buildHomeRecommendationReason(book, profile),
+      }))
+      .sort((left, right) => right.score - left.score || left.index - right.index);
+
+    const selected = this.pickDiverseRecommendations(scoredBooks, safeLimit);
+    const source: HomeRecommendationSource = profile.hasPersonalSignals ? 'personalized' : 'popular';
+
+    return {
+      source,
+      title: source === 'personalized' ? 'Gợi ý theo gu gần đây của bạn' : 'Sách được nhiều độc giả quan tâm',
+      subtitle: source === 'personalized'
+        ? 'Dựa trên lịch sử tìm kiếm, tư vấn AI và những sách bạn từng quan tâm.'
+        : 'Chọn từ các sách còn hàng, bán ổn và có tín hiệu đánh giá tốt, không dùng gợi ý ngẫu nhiên.',
+      books: selected.map((item) => ({ ...item.book, reason: item.reason })),
+    };
+  }
+
+  private async getRecommendationPool(limit: number): Promise<BookResponse[]> {
+    const [bestsellers, latest] = await Promise.all([
+      this.bookRepository.findAllWithFilters({ page: 1, limit, sort: 'bestseller' }),
+      this.bookRepository.findAllWithFilters({ page: 1, limit, sort: 'latest' }),
+    ]);
+
+    const map = new Map<string, BookResponse>();
+    [...bestsellers.data, ...latest.data].forEach((book) => map.set(book.id, book));
+    return Array.from(map.values());
+  }
+
+  private emptyRecommendationProfile(): RecommendationSignalProfile {
+    return {
+      purchasedBookIds: new Set(),
+      categoryWeights: new Map(),
+      authorWeights: new Map(),
+      queryTokens: new Set(),
+      queryTexts: [],
+      interactedBookWeights: new Map(),
+      hasPersonalSignals: false,
+    };
+  }
+
+  private async buildRecommendationProfile(userId: string): Promise<RecommendationSignalProfile> {
+    const profile = this.emptyRecommendationProfile();
+    const orderRepo = AppDataSource.getRepository(Order);
+    const behaviorRepo = AppDataSource.getRepository(UserBehavior);
+    const conversationRepo = AppDataSource.getRepository(AIAdvisorConversation);
+    const since = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+
+    const [orders, behaviors, conversations] = await Promise.all([
+      orderRepo.find({
+        where: { userId },
+        relations: ['items', 'items.book', 'items.book.category'],
+        order: { createdAt: 'DESC' },
+        take: 20,
+      }),
+      behaviorRepo
+        .createQueryBuilder('behavior')
+        .leftJoinAndSelect('behavior.book', 'book')
+        .leftJoinAndSelect('book.category', 'category')
+        .where('behavior.userId = :userId', { userId })
+        .andWhere('behavior.createdAt >= :since', { since })
+        .orderBy('behavior.createdAt', 'DESC')
+        .take(80)
+        .getMany(),
+      conversationRepo.find({
+        where: { userId },
+        order: { updatedAt: 'DESC' },
+        take: 8,
+      }),
+    ]);
+
+    orders
+      .filter((order) => order.status !== OrderStatus.CANCELLED)
+      .forEach((order) => {
+        const orderWeight = order.status === OrderStatus.COMPLETED ? 8 : 4;
+        (order.items || []).forEach((item) => {
+          const book = item.book;
+          if (!book) return;
+          profile.purchasedBookIds.add(book.id);
+          this.addWeight(profile.authorWeights, this.normalizeSignal(book.author), orderWeight * 0.7);
+          if (book.categoryId) {
+            this.addWeight(profile.categoryWeights, book.categoryId, orderWeight);
+          }
+        });
+      });
+
+    behaviors.forEach((behavior) => {
+      if (behavior.queryText && [BehaviorType.SEARCH, BehaviorType.AI_ADVISOR_QUERY].includes(behavior.behaviorType)) {
+        profile.queryTexts.push(behavior.queryText);
+        this.extractRecommendationTokens(behavior.queryText).forEach((token) => profile.queryTokens.add(token));
+      }
+
+      if (behavior.bookId) {
+        const weight = behavior.behaviorType === BehaviorType.ADD_TO_CART ? 6 : behavior.behaviorType === BehaviorType.VIEW ? 3 : 2;
+        this.addWeight(profile.interactedBookWeights, behavior.bookId, weight);
+      }
+
+      if (behavior.book?.categoryId) {
+        this.addWeight(profile.categoryWeights, behavior.book.categoryId, 2);
+      }
+
+      if (behavior.book?.author) {
+        this.addWeight(profile.authorWeights, this.normalizeSignal(behavior.book.author), 1.5);
+      }
+    });
+
+    conversations.forEach((conversation) => {
+      this.extractUserMessagesFromConversation(conversation.messages).forEach((message) => {
+        profile.queryTexts.push(message);
+        this.extractRecommendationTokens(message).forEach((token) => profile.queryTokens.add(token));
+      });
+    });
+
+    profile.hasPersonalSignals =
+      profile.purchasedBookIds.size > 0 ||
+      profile.categoryWeights.size > 0 ||
+      profile.authorWeights.size > 0 ||
+      profile.queryTokens.size > 0 ||
+      profile.interactedBookWeights.size > 0;
+
+    return profile;
+  }
+
+  private scoreHomeRecommendation(book: BookResponse, profile: RecommendationSignalProfile): number {
+    let score = 0;
+    const authorKey = this.normalizeSignal(book.author);
+    const text = this.normalizeSignal(`${book.title} ${book.author} ${book.category?.name || ''} ${book.description || ''}`);
+
+    score += Math.min(4, Number(book.rating || 0)) * 1.5;
+    score += Math.min(4, Number(book.soldCount || 0) / 25);
+    score += Number(book.discount || 0) > 0 ? 0.8 : 0;
+
+    if (book.categoryId) score += profile.categoryWeights.get(book.categoryId) || 0;
+    if (authorKey) score += profile.authorWeights.get(authorKey) || 0;
+    score += profile.interactedBookWeights.get(book.id) || 0;
+
+    profile.queryTokens.forEach((token) => {
+      if (text.includes(token)) score += 2.5;
+      if (this.normalizeSignal(book.title).includes(token)) score += 1.5;
+      if (this.normalizeSignal(book.category?.name).includes(token)) score += 1.5;
+    });
+
+    return score;
+  }
+
+  private buildHomeRecommendationReason(book: BookResponse, profile: RecommendationSignalProfile): string {
+    const authorKey = this.normalizeSignal(book.author);
+    const categoryWeight = book.categoryId ? profile.categoryWeights.get(book.categoryId) || 0 : 0;
+    const authorWeight = authorKey ? profile.authorWeights.get(authorKey) || 0 : 0;
+    const bookText = this.normalizeSignal(`${book.title} ${book.category?.name || ''} ${book.description || ''}`);
+    const matchedQueryToken = [...profile.queryTokens].find((token) => bookText.includes(token));
+
+    if (matchedQueryToken && profile.queryTexts.length > 0) {
+      return `Gần đây bạn quan tâm đến "${this.shortenText(profile.queryTexts[0], 54)}", nên cuốn này được ưu tiên vì có chủ đề khá gần với mạch tìm kiếm đó.`;
+    }
+
+    if (categoryWeight > 0 && book.category?.name) {
+      return `Bạn từng quan tâm đến nhóm ${book.category.name}, nên cuốn này là một hướng đọc gần gu hơn so với gợi ý phổ biến thông thường.`;
+    }
+
+    if (authorWeight > 0 && book.author) {
+      return `Bạn từng chọn hoặc quan tâm đến sách của ${book.author}, nên đây là lựa chọn hợp lý nếu muốn tiếp tục giọng viết quen thuộc.`;
+    }
+
+    if (Number(book.rating || 0) >= 4) {
+      return 'Cuốn này có tín hiệu đánh giá tốt và vẫn còn hàng, phù hợp để tham khảo khi bạn chưa có nhu cầu thật cụ thể.';
+    }
+
+    return 'Cuốn này đang có tín hiệu quan tâm ổn trong kho, được chọn làm gợi ý an toàn thay vì lấy ngẫu nhiên.';
+  }
+
+  private pickDiverseRecommendations<T extends { book: BookResponse; score: number; reason: string }>(
+    scoredBooks: T[],
+    limit: number
+  ): T[] {
+    const selected: T[] = [];
+    const categoryCounts = new Map<string, number>();
+
+    for (const item of scoredBooks) {
+      const categoryKey = item.book.categoryId || 'uncategorized';
+      if ((categoryCounts.get(categoryKey) || 0) >= 2) continue;
+
+      selected.push(item);
+      categoryCounts.set(categoryKey, (categoryCounts.get(categoryKey) || 0) + 1);
+      if (selected.length >= limit) return selected;
+    }
+
+    for (const item of scoredBooks) {
+      if (selected.some((selectedItem) => selectedItem.book.id === item.book.id)) continue;
+      selected.push(item);
+      if (selected.length >= limit) break;
+    }
+
+    return selected;
+  }
+
+  private isRecommendableBook(book: BookResponse): boolean {
+    return !book.deletedAt && book.status !== 'deleted' && Number(book.stock || 0) > 0;
+  }
+
+  private addWeight(map: Map<string, number>, key: string, weight: number): void {
+    if (!key) return;
+    map.set(key, (map.get(key) || 0) + weight);
+  }
+
+  private normalizeSignal(value?: string | null): string {
+    return (value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private extractRecommendationTokens(value: string): string[] {
+    const stopWords = new Set([
+      'sach',
+      'cuon',
+      'minh',
+      'toi',
+      'can',
+      'tim',
+      'goi',
+      'cho',
+      'nguoi',
+      'phu',
+      'hop',
+      'voi',
+      'doc',
+      'hay',
+      'mot',
+      'vai',
+    ]);
+
+    return this.normalizeSignal(value)
+      .split(' ')
+      .filter((token) => token.length >= 4 && !stopWords.has(token))
+      .slice(0, 12);
+  }
+
+  private extractUserMessagesFromConversation(messages: unknown[]): string[] {
+    if (!Array.isArray(messages)) return [];
+
+    return messages
+      .filter((message): message is { type?: unknown; text?: unknown } => Boolean(message && typeof message === 'object'))
+      .filter((message) => message.type === 'user' && typeof message.text === 'string')
+      .map((message) => message.text.trim())
+      .filter(Boolean)
+      .slice(-6);
+  }
+
+  private shortenText(value: string, maxLength: number): string {
+    const normalized = value.replace(/\s+/g, ' ').trim();
+    return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 3).trim()}...` : normalized;
   }
 
   async getBookById(id: string, includeDeleted = false): Promise<BookResponse> {

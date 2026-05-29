@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { injectable } from 'tsyringe';
 import { BookService } from '@services/BookService';
+import { BehaviorType } from '@entities/UserBehavior';
 
 function getSafePagination(pageValue: unknown, limitValue: unknown): { page: number; limit: number } {
   const parsedPage = parseInt(String(pageValue ?? ''), 10);
@@ -78,6 +79,7 @@ export class BookController {
       }
 
       const book = await this.bookService.getBookById(id);
+      await this.bookService.recordUserBookEvent(req.user?.userId, BehaviorType.VIEW, id);
       
       res.status(200).json({
         success: true,
@@ -117,6 +119,20 @@ export class BookController {
     }
   };
 
+  getHomeRecommendations = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { limit } = getSafePagination(1, req.query.limit);
+      const result = await this.bookService.getHomeRecommendations(req.user?.userId, limit);
+
+      res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   searchBooks = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       // Nhận query string từ URL (ví dụ: ?q=...)
@@ -124,6 +140,11 @@ export class BookController {
       const { page, limit } = getSafePagination(req.query.page, req.query.limit);
 
       const result = await this.bookService.searchBooks(query, page, limit);
+      await this.bookService.recordUserQueryEvent(req.user?.userId, BehaviorType.SEARCH, query, {
+        page,
+        limit,
+        resultCount: result.data.length,
+      });
 
       res.status(200).json({
         success: true,

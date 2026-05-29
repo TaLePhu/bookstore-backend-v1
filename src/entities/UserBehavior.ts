@@ -17,6 +17,8 @@ export enum BehaviorType {
   ADD_TO_CART = 'ADD_TO_CART',
   PURCHASE = 'PURCHASE',
   WISHLIST = 'WISHLIST',
+  SEARCH = 'SEARCH',
+  AI_ADVISOR_QUERY = 'AI_ADVISOR_QUERY',
 }
 
 @Entity('user_behaviors')
@@ -39,10 +41,16 @@ export class UserBehavior {
   @Column('uuid')
   userId: string;
 
-  @ManyToOne(() => Book, (book) => book.userBehaviors, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Book, (book) => book.userBehaviors, { nullable: true, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'book_id' })
-  book: Book;
+  book: Book | null;
 
-  @Column('uuid')
-  bookId: string = '';
+  @Column('uuid', { nullable: true })
+  bookId: string | null = null;
+
+  @Column('text', { nullable: true })
+  queryText: string | null;
+
+  @Column('jsonb', { nullable: true })
+  metadata: Record<string, unknown> | null;
 }
