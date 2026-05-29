@@ -482,6 +482,8 @@ export class AIAdvisorService {
                     'answer chỉ là 2-3 câu văn tự nhiên, viết thành một đoạn liền mạch khi đã có recommendations.',
                     'Câu mở đầu phải phản hồi như đang trò chuyện, không dùng mẫu "Mình chọn X cuốn..." hoặc "Dựa trên nhu cầu...".',
                     'Câu mở đầu nên đủ thuyết phục: nhắc lại tinh thần nhu cầu, nói tiêu chí chọn sách, và dẫn người đọc xem các gợi ý bên dưới.',
+                    'Nếu nhu cầu còn mơ hồ, hãy thêm một câu hỏi gợi mở tự nhiên ở cuối answer, ví dụ: "Bạn có thể cho mình biết thêm người nhận bao nhiêu tuổi, dịp tặng và gu đọc của họ để mình lọc sát hơn."',
+                    'Không viết lý do chung chung như "dễ tiếp cận" hoặc "đáp ứng tinh thần bạn mô tả" nếu chưa nói rõ tiêu chí cụ thể. Hãy nêu tiêu chí sát ngữ cảnh như người nhận, dịp tặng, cảm xúc muốn gửi, độ dễ đọc, mức trang trọng hoặc tính ứng dụng.',
                     'Ví dụ câu mở đầu tốt: "Chủ đề quê hương đất nước thì mình sẽ nghiêng về những cuốn có chất đời sống Việt Nam, ký ức tuổi thơ và cảm giác gần gũi."',
                     'Nếu đây là câu hỏi nối tiếp, hãy nối mạch bằng các cụm tự nhiên như "Nếu muốn đổi sang lựa chọn nhẹ hơn...", "Vậy mình chuyển hướng sang...", "Theo gu bạn vừa nói...".',
                     'Trong answer, KHÔNG tóm tắt lại mô tả/nội dung cốt truyện của sách vì phần thẻ sách bên dưới đã có mô tả.',
@@ -618,7 +620,7 @@ export class AIAdvisorService {
 
   private buildNaturalIntro(question: string, books: AdvisorRecommendation[]): string {
     const normalizedQuestion = this.normalizeText(question);
-    const bookCountText = books.length === 1 ? 'một cuốn gần nhất' : `${books.length} cuốn gần nhất`;
+    const bookCountText = books.length === 1 ? 'một cuốn' : `${books.length} cuốn`;
 
     if (!question.trim()) {
       return `Bạn đang tiếp tục mạch tư vấn hiện tại, nên mình sẽ giữ tiêu chí đã trao đổi trước đó. Mình sẽ gợi ý ${bookCountText} để bạn có thêm điểm bắt đầu rõ ràng. Các lựa chọn này được chọn theo hướng dễ đọc, dễ so sánh và có thể tinh chỉnh tiếp nếu bạn muốn đổi gu.`;
@@ -640,6 +642,10 @@ export class AIAdvisorService {
       return `Bạn đang tìm sách gợi cảm giác quê hương, đất nước hoặc ký ức Việt Nam. Mình sẽ gợi ý ${bookCountText} có không khí gần gũi, dễ chạm cảm xúc và phù hợp để đọc chậm rãi. Hướng chọn này thường đem lại cảm giác thân thuộc hơn là chỉ cung cấp thông tin khô.`;
     }
 
+    if (/(qua tang|tang qua|lam qua|tang ban|tang nguoi|giup minh)/.test(normalizedQuestion)) {
+      return `Bạn đang muốn chọn sách làm quà, nên mình sẽ ưu tiên những cuốn dễ tạo thiện cảm, nội dung không quá kén người đọc và có cảm giác chỉn chu khi đem tặng. Mình sẽ gợi ý ${bookCountText} theo hướng an toàn trước: dễ đọc, có thông điệp rõ và hợp để mở đầu nếu bạn chưa biết gu người nhận. Bạn có thể cho mình biết thêm người nhận là ai, khoảng bao nhiêu tuổi, dịp tặng và họ thích đọc nhẹ nhàng hay thực tế để mình lọc sát hơn.`;
+    }
+
     if (/(lang man|tinh yeu)/.test(normalizedQuestion) && /(70 tuoi|nguoi lon tuoi|cao tuoi|nguoi gia)/.test(normalizedQuestion)) {
       return `Bạn đang tìm tiểu thuyết lãng mạn cho người lớn tuổi, nên mình sẽ ưu tiên những cuốn có cảm xúc chín chắn, nhịp đọc không quá gấp và câu chuyện dễ đồng cảm. Mình sẽ gợi ý ${bookCountText} gần nhất trong kho hiện tại. Với nhóm độc giả này, một cuốn sách hợp thường cần sự ấm áp, chiều sâu cảm xúc và cách kể dễ theo dõi hơn là chỉ có yếu tố lãng mạn đơn thuần.`;
     }
@@ -652,7 +658,7 @@ export class AIAdvisorService {
       return `Bạn đang tìm một câu chuyện giàu cảm xúc, thiên về tình yêu hoặc sự đồng cảm. Mình sẽ gợi ý ${bookCountText} có mạch đọc mềm, dễ tạo dư âm và không quá khô. Những cuốn này hợp nếu bạn muốn đọc vì cảm giác, nhân vật và không khí câu chuyện.`;
     }
 
-    return `Bạn đang tìm sách theo hướng "${this.formatNeedForAnswer(question)}". Mình sẽ gợi ý ${bookCountText} gần nhất trong kho hiện tại, ưu tiên các cuốn dễ tiếp cận và có khả năng đáp ứng đúng tinh thần bạn mô tả. Nếu các lựa chọn này chưa đúng gu, mình có thể tiếp tục lọc lại theo thể loại, độ dễ đọc hoặc cảm xúc bạn muốn.`;
+    return `Bạn đang tìm sách theo hướng "${this.formatNeedForAnswer(question)}", nhưng thông tin hiện tại vẫn còn khá rộng nên mình sẽ chọn ${bookCountText} có tín hiệu gần nhất trong kho để bạn tham khảo trước. Mình ưu tiên các cuốn có chủ đề hoặc cảm giác đọc liên quan, thay vì chọn ngẫu nhiên theo độ phổ biến. Bạn có thể cho mình biết thêm thể loại muốn đọc, người đọc là ai, mục đích đọc hoặc cảm xúc bạn muốn nhận được để mình lọc đúng nhu cầu hơn.`;
   }
 
   private buildAlternativeIntro(question: string, books: AdvisorRecommendation[]): string {
