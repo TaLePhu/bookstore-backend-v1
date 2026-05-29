@@ -76,7 +76,8 @@ export class AIAdvisorService {
       };
     }
 
-    const searchQuery = this.buildSearchQuery(normalizedQuestion, safeHistory);
+    const effectiveQuestion = this.buildEffectiveQuestion(normalizedQuestion, safeHistory);
+    const searchQuery = this.buildSearchQuery(effectiveQuestion, safeHistory);
     const candidateResult = await this.findCandidateBooks(
       searchQuery,
       Math.max(targetCount, safeLimit),
@@ -85,8 +86,8 @@ export class AIAdvisorService {
     );
     const candidateBooks = candidateResult.books;
 
-    const selection = await this.generateSelection(normalizedQuestion, candidateBooks, targetCount, safeHistory);
-    return this.reconcileSelection(normalizedQuestion, selection, candidateBooks, targetCount, candidateResult.isAlternative);
+    const selection = await this.generateSelection(effectiveQuestion, normalizedQuestion, candidateBooks, targetCount, safeHistory);
+    return this.reconcileSelection(effectiveQuestion, selection, candidateBooks, targetCount, candidateResult.isAlternative);
   }
 
   private normalizeHistory(history: AdvisorHistoryMessage[]): AdvisorHistoryMessage[] {
@@ -125,9 +126,48 @@ export class AIAdvisorService {
     return [previousUserNeeds, question].filter(Boolean).join(' ').slice(0, 1200);
   }
 
+  private buildEffectiveQuestion(question: string, history: AdvisorHistoryMessage[]): string {
+    const previousNeed = this.getPreviousUserNeed(history);
+    if (!previousNeed) return question;
+
+    const normalizedQuestion = this.normalizeText(question);
+    const isRefinement =
+      /(danh cho|cho nguoi|tren \d+ tuoi|duoi \d+ tuoi|tuoi|re hon|gia tot|dat hon|nhe hon|de doc|ngan hon|dai hon|khac|them|tuong tu|giong|van|phu hop voi|nen doc)/.test(
+        normalizedQuestion
+      );
+
+    if (!isRefinement || this.isNewTopicQuestion(normalizedQuestion)) return question;
+
+    return `${previousNeed}. Yêu cầu bổ sung: ${question}`.slice(0, 1200);
+  }
+
+  private getPreviousUserNeed(history: AdvisorHistoryMessage[]): string {
+    const previousUserMessages = history
+      .filter((message) => message.role === 'user' && message.content.trim().length > 0)
+      .map((message) => message.content.trim());
+
+    const collected: string[] = [];
+    for (const content of [...previousUserMessages].reverse()) {
+      collected.unshift(content);
+      if (this.isNewTopicQuestion(this.normalizeText(content))) break;
+      if (collected.length >= 3) break;
+    }
+
+    return collected
+      .join('. ')
+      .replace(/\n+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 500);
+  }
+
+  private isNewTopicQuestion(normalizedQuestion: string): boolean {
+    return /(toi muon tim|tim sach ve|sach ve|the loai|chu de|doi chu de|khong phai|bo qua|tim moi)/.test(normalizedQuestion);
+  }
+
   private shouldAllowReuseFromPrevious(question: string): boolean {
     const normalizedQuestion = this.normalizeText(question);
-    return /(giu tieu chi cu|giu nhu cu|nhu truoc|giong truoc|tuong tu|van tieu chi do|cu nhu vay)/.test(
+    return /(giu tieu chi cu|giu nhu cu|nhu truoc|giong truoc|tuong tu|van tieu chi do|cu nhu vay|danh cho|cho nguoi|tuoi|re hon|nhe hon|de doc)/.test(
       normalizedQuestion
     );
   }
@@ -174,19 +214,22 @@ export class AIAdvisorService {
       const freshSemantic = visibleSemanticBooks.filter((book) => !excludeBookIds.includes(book.id));
       if (allowReuseFromPrevious) {
         const reusedSemantic = visibleSemanticBooks.filter((book) => excludeBookIds.includes(book.id));
-        return { books: this.mixFreshAndReusedBooks(freshSemantic, reusedSemantic, candidateLimit), isAlternative: false };
+        return {
+          books: this.rankBooksByQuery(this.mixFreshAndReusedBooks(freshSemantic, reusedSemantic, candidateLimit), query),
+          isAlternative: false,
+        };
       }
 
       const filteredSemantic = visibleSemanticBooks.filter((book) => !effectiveExcludeBookIds.includes(book.id));
       if (filteredSemantic.length > 0) {
-        return { books: filteredSemantic.slice(0, candidateLimit), isAlternative: false };
+        return { books: this.rankBooksByQuery(filteredSemantic, query).slice(0, candidateLimit), isAlternative: false };
       }
     }
 
     const keywordResult = await this.bookRepository.searchKeywordExtended(query, 1, candidateLimit);
     const filteredKeyword = keywordResult.data.filter((book) => this.isVisibleBook(book) && !effectiveExcludeBookIds.includes(book.id));
     if (filteredKeyword.length > 0) {
-      return { books: filteredKeyword.slice(0, candidateLimit), isAlternative: false };
+      return { books: this.rankBooksByQuery(filteredKeyword, query).slice(0, candidateLimit), isAlternative: false };
     }
 
     const fallback = await this.bookRepository.findAllWithFilters({
@@ -197,7 +240,57 @@ export class AIAdvisorService {
 
     const visibleFallback = fallback.data.filter((book) => this.isVisibleBook(book));
     const filteredFallback = visibleFallback.filter((book) => !effectiveExcludeBookIds.includes(book.id));
-    return { books: (filteredFallback.length > 0 ? filteredFallback : visibleFallback).slice(0, candidateLimit), isAlternative: true };
+    return { books: this.rankBooksByQuery(filteredFallback.length > 0 ? filteredFallback : visibleFallback, query).slice(0, candidateLimit), isAlternative: true };
+  }
+
+  private rankBooksByQuery(books: BookResponse[], query: string): BookResponse[] {
+    const tokens = this.normalizeText(query)
+      .split(' ')
+      .filter((token) => token.length >= 3 && !this.isWeakSearchToken(token));
+
+    if (tokens.length === 0) return books;
+
+    return books
+      .map((book, index) => ({ book, index, score: this.scoreBookForQuery(book, tokens) }))
+      .sort((a, b) => b.score - a.score || a.index - b.index)
+      .map((item) => item.book);
+  }
+
+  private scoreBookForQuery(book: BookResponse, tokens: string[]): number {
+    const title = this.normalizeText(book.title || '');
+    const category = this.normalizeText(book.category?.name || '');
+    const author = this.normalizeText(book.author || '');
+    const description = this.normalizeText(book.description || '');
+    const searchable = `${title} ${category} ${author} ${description}`;
+
+    return tokens.reduce((score, token) => {
+      if (!searchable.includes(token)) return score;
+
+      if (title.includes(token)) return score + 5;
+      if (category.includes(token)) return score + 4;
+      if (author.includes(token)) return score + 2;
+      return score + 1;
+    }, 0);
+  }
+
+  private isWeakSearchToken(token: string): boolean {
+    return [
+      'sach',
+      'cuon',
+      'danh',
+      'cho',
+      'nguoi',
+      'tuoi',
+      'tren',
+      'duoi',
+      'phu',
+      'hop',
+      'voi',
+      'minh',
+      'can',
+      'tim',
+      'goi',
+    ].includes(token);
   }
 
   private mixFreshAndReusedBooks(
@@ -234,14 +327,14 @@ export class AIAdvisorService {
 
   private buildFallbackReason(query: string, book: BookResponse): string {
     const description = this.getCleanDescription(book);
-    const categoryHint = book.category?.name ? ` thuộc nhóm ${book.category.name}` : '';
 
     if (description) {
-      return `${description} Vì vậy cuốn này${categoryHint} có thể đáp ứng một phần nhu cầu "${query}" và giúp bạn kiểm tra xem hướng đọc này có hợp gu không.`;
+      return description;
     }
 
-    const authorHint = book.author ? ` với giọng viết của ${book.author}` : '';
-    return `Cuốn này${categoryHint}${authorHint} là một lựa chọn đáng thử vì nó giữ được tinh thần gần với điều bạn đang tìm và tạo thêm góc so sánh với các gợi ý còn lại.`;
+    const categoryHint = book.category?.name ? ` thuộc nhóm ${book.category.name}` : '';
+    const authorHint = book.author ? ` của ${book.author}` : '';
+    return `Cuốn sách${categoryHint}${authorHint}, có thể dùng làm lựa chọn tham khảo trong nhóm sách này.`;
   }
 
   private normalizeRecommendationReason(query: string, book: BookResponse, reason?: string): string {
@@ -250,7 +343,7 @@ export class AIAdvisorService {
     const isGeneric =
       !trimmed ||
       trimmed.length < 45 ||
-      /(bam sat mach|gan voi dieu ban tim|phu hop voi nhu cau|lua chon dang thu|goc so sanh|hop gu)/.test(normalizedReason);
+      /(bam sat mach|gan voi dieu ban tim|phu hop voi nhu cau|lua chon dang thu|goc so sanh|hop gu|nhu cau|ban dang tim|nen can nhac)/.test(normalizedReason);
 
     if (isGeneric) {
       return this.buildFallbackReason(query, book);
@@ -268,7 +361,7 @@ export class AIAdvisorService {
     if (!description) return '';
 
     const firstSentence = description.match(/.+?[.!?](\s|$)/)?.[0]?.trim() || description;
-    return firstSentence.length > 220 ? `${firstSentence.slice(0, 217).trim()}...` : firstSentence;
+    return firstSentence.length > 180 ? `${firstSentence.slice(0, 177).trim()}...` : firstSentence;
   }
 
   private normalizeText(value: string): string {
@@ -302,7 +395,8 @@ export class AIAdvisorService {
   }
 
   private async generateSelection(
-    question: string,
+    effectiveQuestion: string,
+    latestQuestion: string,
     candidateBooks: BookResponse[],
     targetCount: number,
     history: AdvisorHistoryMessage[]
@@ -352,31 +446,34 @@ export class AIAdvisorService {
                 {
                   text: [
                     'Bạn là trợ lý tư vấn sách cho một nhà sách Việt Nam.',
-                    'Nhiệm vụ: chọn đúng sách trong kho dựa trên nhu cầu mới nhất và lịch sử hội thoại.',
-                    'Luôn xem đây là một cuộc trò chuyện liên tục. Nếu khách hỏi tiếp như "cuốn khác", "rẻ hơn", "giống cuốn trên", hãy hiểu dựa trên các sách và tiêu chí đã nhắc trong lịch sử.',
+                    'Nhiệm vụ: chọn đúng sách trong kho dựa trên nhu cầu hiệu lực, tức là nhu cầu đã được ghép từ lịch sử hội thoại và tin nhắn mới nhất.',
+                    'Luôn xem đây là một cuộc trò chuyện liên tục. Nếu khách bổ sung điều kiện như "dành cho người trên 70 tuổi", "rẻ hơn", "nhẹ hơn", "cuốn khác", hãy giữ chủ đề hoặc thể loại đã nói trước đó và chỉ thêm điều kiện mới.',
+                    'Ví dụ: nếu trước đó khách hỏi "tiểu thuyết lãng mạn", sau đó hỏi "sách dành cho người trên 70 tuổi", hãy hiểu là "tiểu thuyết lãng mạn dành cho người trên 70 tuổi", không được chuyển sang sách người cao tuổi chung chung.',
                     `Hãy chọn đúng ${targetCount} sách. Nếu chỉ có ít sách phù hợp, chọn ít hơn.`,
                     'Nếu không có sách nào thật sự đúng nhu cầu, vẫn chọn lựa chọn thay thế gần nhất trong kho nhưng phải nói rõ là "chưa có cuốn thật sự khớp", "mình chuyển sang phương án gần nhất", hoặc cách diễn đạt tương tự.',
                     'Khi đưa phương án thay thế, giải thích tiêu chí thay thế: gần về cảm xúc đọc, gần về chủ đề, dễ đọc hơn, cùng nhóm thể loại, hoặc có một phần đáp ứng nhu cầu.',
                     'Chỉ được dùng id sách có trong danh sách ứng viên. Không bịa tên sách, tác giả hoặc id.',
                     'Câu trả lời phải nhắc đúng các sách trong recommendations, không nhắc sách ngoài danh sách đó.',
                     'Giọng văn tự nhiên như nhân viên nhà sách đang tư vấn: ấm, cụ thể, không lặp cụm "khớp với nhu cầu", không nói kiểu máy móc.',
-                    'Định dạng answer dễ đọc: 2-3 câu mở đầu tự nhiên, sau đó mỗi sách là một dòng bullet bắt đầu bằng "- Tên sách: ...".',
+                    'Định dạng answer bắt buộc theo kiểu: "Bạn đang tìm ... . Mình sẽ gợi ý ... . Lý do là ...".',
+                    'answer chỉ là 2-3 câu văn tự nhiên, viết thành một đoạn liền mạch khi đã có recommendations.',
                     'Câu mở đầu phải phản hồi như đang trò chuyện, không dùng mẫu "Mình chọn X cuốn..." hoặc "Dựa trên nhu cầu...".',
                     'Câu mở đầu nên đủ thuyết phục: nhắc lại tinh thần nhu cầu, nói tiêu chí chọn sách, và dẫn người đọc xem các gợi ý bên dưới.',
                     'Ví dụ câu mở đầu tốt: "Chủ đề quê hương đất nước thì mình sẽ nghiêng về những cuốn có chất đời sống Việt Nam, ký ức tuổi thơ và cảm giác gần gũi."',
                     'Nếu đây là câu hỏi nối tiếp, hãy nối mạch bằng các cụm tự nhiên như "Nếu muốn đổi sang lựa chọn nhẹ hơn...", "Vậy mình chuyển hướng sang...", "Theo gu bạn vừa nói...".',
                     'Trong answer, KHÔNG tóm tắt lại mô tả/nội dung cốt truyện của sách vì phần thẻ sách bên dưới đã có mô tả.',
-                    'Mỗi bullet trong answer chỉ nói vai trò tư vấn: vì sao nên cân nhắc cuốn đó theo nhu cầu, cảm giác đọc, độ dễ đọc, góc nhìn, mức phù hợp để bắt đầu hoặc để so sánh.',
+                    'Trong answer chỉ nói vai trò tư vấn: bạn đang tìm gì, mình sẽ gợi ý theo hướng nào, vì sao hướng chọn đó hợp lý và đáng cân nhắc.',
                     'Không viết dạng: "Tên sách là tác phẩm..." hoặc "kể về...".',
-                    'Riêng trường recommendations[].reason sẽ hiển thị trong thẻ sách, nên phải cụ thể hơn answer: nêu nội dung/chủ đề chính của cuốn sách và giải thích vì sao nội dung đó hợp với nhu cầu khách.',
-                    'recommendations[].reason không được rập khuôn. Tránh câu chung chung như "bám sát mạch bạn đang tìm". Hãy viết 1-2 câu tự nhiên, có chi tiết từ mô tả sách.',
+                    'Riêng trường recommendations[].reason sẽ hiển thị trong thẻ sách, nên chỉ mô tả ngắn gọn nội dung/chủ đề chính của sách để user có cái nhìn tổng quát.',
+                    'recommendations[].reason không được nhắc lại nhu cầu khách, không viết "phù hợp với nhu cầu", không tư vấn mua; chỉ mô tả sách trong 1-2 câu ngắn.',
                     'Nếu recommendations có 1 sách thì câu trả lời chỉ nói về 1 sách. Nếu có nhiều sách thì nói rõ từng sách rất ngắn gọn.',
                     'Ưu tiên: đúng chủ đề người dùng hỏi, còn hàng, mô tả sát nhu cầu, không trùng sách đã gợi ý trước trừ khi khách muốn tương tự.',
                     'Trả về JSON thuần, không markdown, không giải thích ngoài JSON.',
                     'Schema:',
-                    '{"answer":"2-3 câu mở đầu tự nhiên, thuyết phục, không máy móc\\n- Tên sách 1: lý do tư vấn ngắn, không tóm tắt sách\\n- Tên sách 2: lý do tư vấn ngắn, không tóm tắt sách","recommendations":[{"id":"book-id","reason":"1-2 câu nói về nội dung sách và vì sao hợp nhu cầu"}]}',
+                    '{"answer":"Bạn đang tìm ... . Mình sẽ gợi ý ... . Lý do là ...","recommendations":[{"id":"book-id","reason":"1-2 câu mô tả ngắn nội dung/chủ đề chính của sách"}]}',
                     `Lịch sử hội thoại:\n${historyContext}`,
-                    `Tin nhắn mới nhất của khách: ${question}`,
+                    `Tin nhắn mới nhất của khách: ${latestQuestion}`,
+                    `Nhu cầu hiệu lực cần tư vấn: ${effectiveQuestion}`,
                     `Danh sách ứng viên trong kho:\n${bookContext}`,
                   ].join('\n'),
                 },
@@ -471,17 +568,10 @@ export class AIAdvisorService {
     const intro = this.buildNaturalIntro(question, books);
 
     if (books.length === 1) {
-      const book = books[0];
-      return [
-        intro,
-        `- ${book.title}: ${this.buildAdvisorAngle(book)} Đây là lựa chọn dễ bắt đầu trước nếu bạn muốn kiểm tra xem hướng này có hợp gu không.`,
-      ].join('\n');
+      return intro;
     }
 
-    const details = books
-      .map((book) => `- ${book.title}: ${this.buildAdvisorAngle(book)}`)
-      .join('\n');
-    return `${intro}\n${details}`;
+    return intro;
   }
 
   private buildAdvisorAngle(book: AdvisorRecommendation): string {
@@ -505,40 +595,41 @@ export class AIAdvisorService {
 
   private buildNaturalIntro(question: string, books: AdvisorRecommendation[]): string {
     const normalizedQuestion = this.normalizeText(question);
+    const bookCountText = books.length === 1 ? 'một cuốn gần nhất' : `${books.length} cuốn gần nhất`;
 
     if (!question.trim()) {
-      return books.length === 1
-        ? 'Mình sẽ giữ đúng mạch bạn đang tìm và ưu tiên một lựa chọn rõ ràng trước. Cuốn này hợp để bạn bắt đầu ngay, sau đó nếu chưa đúng gu mình có thể đổi hướng tiếp:'
-        : 'Mình sẽ giữ mạch tư vấn hiện tại và chọn vài cuốn dễ tiếp cận hơn. Các gợi ý bên dưới được chọn để bạn có thể so sánh nhanh giữa sắc thái đọc, độ dễ vào truyện và mức hợp gu:';
+      return `Bạn đang tiếp tục mạch tư vấn hiện tại, nên mình sẽ giữ tiêu chí đã trao đổi trước đó. Mình sẽ gợi ý ${bookCountText} để bạn có thêm điểm bắt đầu rõ ràng. Các lựa chọn này được chọn theo hướng dễ đọc, dễ so sánh và có thể tinh chỉnh tiếp nếu bạn muốn đổi gu.`;
     }
 
     if (/(khac|goi y khac|doi|thay|them|khong trung)/.test(normalizedQuestion)) {
-      return 'Vậy mình đổi sang vài lựa chọn khác nhưng vẫn giữ đúng tinh thần bạn đang tìm. Mình ưu tiên các cuốn tạo cảm giác mới hơn so với lượt trước, nhưng không đi lệch khỏi gu đọc bạn đã mô tả:';
+      return `Bạn đang muốn đổi sang lựa chọn khác nhưng vẫn giữ tinh thần của lượt tư vấn trước. Mình sẽ gợi ý ${bookCountText} có cảm giác mới hơn, tránh lặp lại các cuốn vừa nêu. Như vậy bạn có thêm phương án để so sánh mà không bị lệch khỏi gu đọc ban đầu.`;
     }
 
     if (/(re hon|gia tot|tiet kiem)/.test(normalizedQuestion)) {
-      return 'Nếu ưu tiên mức giá dễ chịu hơn, mình sẽ lọc theo hướng thực tế hơn. Những cuốn bên dưới vẫn bám sát gu đọc của bạn, nhưng hợp hơn để cân nhắc khi muốn mua thử mà không phải đắn đo quá nhiều:';
+      return `Bạn đang tìm sách có mức giá dễ cân nhắc hơn. Mình sẽ gợi ý ${bookCountText} theo hướng thực tế, vẫn giữ gần gu đọc nhưng phù hợp hơn khi bạn muốn mua thử. Lý do là các lựa chọn này giúp giảm rủi ro chọn nhầm mà vẫn có đủ nội dung để tham khảo.`;
     }
 
     if (/(nhe hon|de doc|thu gian)/.test(normalizedQuestion)) {
-      return 'Nếu muốn đọc nhẹ nhàng hơn, mình sẽ nghiêng về những cuốn dễ vào mạch và không tạo cảm giác nặng. Các gợi ý này hợp để đọc thư giãn, nhưng vẫn đủ chất riêng để bạn không thấy nhạt:';
+      return `Bạn đang tìm sách nhẹ nhàng, dễ đọc hoặc phù hợp để thư giãn. Mình sẽ gợi ý ${bookCountText} có nhịp đọc dễ vào hơn, không tạo cảm giác quá nặng. Những lựa chọn này hợp để đọc đều đặn và vẫn đủ chất riêng để không bị nhạt.`;
     }
 
     if (/(que huong|dat nuoc|viet nam|tuoi tho|lang que)/.test(normalizedQuestion)) {
-      return 'Chủ đề quê hương đất nước thì mình sẽ ưu tiên những cuốn có chất đời sống Việt Nam, ký ức tuổi thơ và cảm giác gần gũi. Mình chọn theo hướng dễ chạm cảm xúc, có không khí thân thuộc và phù hợp để đọc chậm rãi:';
+      return `Bạn đang tìm sách gợi cảm giác quê hương, đất nước hoặc ký ức Việt Nam. Mình sẽ gợi ý ${bookCountText} có không khí gần gũi, dễ chạm cảm xúc và phù hợp để đọc chậm rãi. Lý do là nhóm này thường đem lại cảm giác thân thuộc hơn là chỉ cung cấp thông tin khô.`;
+    }
+
+    if (/(lang man|tinh yeu)/.test(normalizedQuestion) && /(70 tuoi|nguoi lon tuoi|cao tuoi|nguoi gia)/.test(normalizedQuestion)) {
+      return `Bạn đang tìm tiểu thuyết lãng mạn cho người lớn tuổi, nên mình sẽ ưu tiên những cuốn có cảm xúc chín chắn, nhịp đọc không quá gấp và câu chuyện dễ đồng cảm. Mình sẽ gợi ý ${bookCountText} gần nhất trong kho hiện tại. Lý do là với nhóm độc giả này, một cuốn sách hợp thường cần sự ấm áp, chiều sâu cảm xúc và cách kể dễ theo dõi hơn là chỉ có yếu tố lãng mạn đơn thuần.`;
     }
 
     if (/(khoi nghiep|kinh doanh|startup|quan tri)/.test(normalizedQuestion)) {
-      return 'Với hướng kinh doanh khởi nghiệp, mình sẽ chọn những cuốn giúp bạn nhìn rõ cách xây ý tưởng, thử nghiệm và vận hành thực tế. Các gợi ý bên dưới thiên về tính ứng dụng, nên hợp nếu bạn muốn đọc xong có thể rút ra cách làm cụ thể:';
+      return `Bạn đang tìm sách về kinh doanh hoặc khởi nghiệp. Mình sẽ gợi ý ${bookCountText} thiên về tư duy thực tế, cách xây ý tưởng và cách ra quyết định. Các lựa chọn này thuyết phục hơn vì sau khi đọc, bạn có thể rút ra hướng áp dụng thay vì chỉ nắm lý thuyết chung chung.`;
     }
 
     if (/(tinh yeu|lang man|cam xuc)/.test(normalizedQuestion)) {
-      return 'Nếu bạn muốn một câu chuyện giàu cảm xúc, mình sẽ chọn những cuốn có mạch đọc mềm và dễ đồng cảm. Mình ưu tiên cảm giác đọc cuốn hút, nhân vật có dư âm và không quá khô:';
+      return `Bạn đang tìm một câu chuyện giàu cảm xúc, thiên về tình yêu hoặc sự đồng cảm. Mình sẽ gợi ý ${bookCountText} có mạch đọc mềm, dễ tạo dư âm và không quá khô. Những cuốn này hợp nếu bạn muốn đọc vì cảm giác, nhân vật và không khí câu chuyện.`;
     }
 
-    return books.length === 1
-      ? 'Mình thấy cuốn này là điểm bắt đầu hợp lý nhất cho điều bạn đang tìm. Nó đủ rõ hướng để bạn thử trước, và nếu chưa đúng cảm giác mong muốn mình có thể tiếp tục tinh chỉnh ở lượt sau:'
-      : 'Mình sẽ gợi ý theo hướng dễ đọc trước, rồi bạn có thể chọn cuốn hợp gu nhất. Các cuốn bên dưới được chọn để mỗi cuốn đem lại một góc đọc hơi khác nhau, giúp bạn dễ so sánh hơn:';
+    return `Bạn đang tìm sách theo hướng "${this.formatNeedForAnswer(question)}". Mình sẽ gợi ý ${bookCountText} gần nhất trong kho hiện tại, ưu tiên các cuốn dễ tiếp cận và có khả năng đáp ứng đúng tinh thần bạn mô tả. Nếu các lựa chọn này chưa đúng gu, mình có thể tiếp tục lọc lại theo thể loại, độ dễ đọc hoặc cảm xúc bạn muốn.`;
   }
 
   private buildAlternativeIntro(question: string, books: AdvisorRecommendation[]): string {
@@ -549,17 +640,24 @@ export class AIAdvisorService {
     const normalizedQuestion = this.normalizeText(question);
 
     if (/(sach thieu nhi|tre em|mau giao|lop 1|lop mot)/.test(normalizedQuestion)) {
-      return 'Trong kho hiện tại mình chưa thấy cuốn nào thật sự đúng hướng sách thiếu nhi như bạn hỏi. Mình sẽ chuyển sang lựa chọn gần nhất theo tiêu chí dễ đọc, giàu cảm xúc và có thể phù hợp để đọc nhẹ nhàng:';
+      return 'Bạn đang tìm sách thiếu nhi, nhưng trong kho hiện tại mình chưa thấy cuốn nào thật sự đúng nhóm đó. Mình sẽ chuyển sang lựa chọn thay thế gần nhất theo tiêu chí dễ đọc, giàu cảm xúc và có thể đọc nhẹ nhàng. Nếu bạn muốn đúng sách cho trẻ em, mình khuyên nên mở rộng kho hoặc bổ sung thêm đầu sách thiếu nhi chuyên biệt.';
     }
 
     if (/(lich su|chien tranh|cach mang)/.test(normalizedQuestion)) {
-      return 'Mình chưa thấy cuốn nào thật sự khớp hoàn toàn với hướng lịch sử/chiến tranh trong kho hiện tại. Vì vậy mình sẽ chuyển sang những lựa chọn gần nhất về bối cảnh, tinh thần hoặc cảm giác đọc nghiêm túc:';
+      return 'Bạn đang tìm sách lịch sử hoặc chiến tranh, nhưng kho hiện tại chưa có lựa chọn thật sự khớp hoàn toàn. Mình sẽ chuyển sang phương án gần nhất về bối cảnh, tinh thần hoặc cảm giác đọc nghiêm túc. Đây là lựa chọn thay thế để bạn vẫn có hướng tham khảo thay vì nhận một gợi ý sai nhu cầu.';
     }
 
     if (/(khoa hoc vien tuong|sci fi|vien tuong)/.test(normalizedQuestion)) {
-      return 'Kho hiện tại chưa có lựa chọn thật sự đúng chất khoa học viễn tưởng. Mình sẽ tạm chuyển sang các cuốn có yếu tố tưởng tượng, hành trình hoặc góc nhìn khác lạ để bạn vẫn có phương án tham khảo:';
+      return 'Bạn đang tìm sách khoa học viễn tưởng, nhưng kho hiện tại chưa có lựa chọn thật sự đúng chất sci-fi. Mình sẽ tạm chuyển sang các cuốn có yếu tố tưởng tượng, hành trình hoặc góc nhìn khác lạ. Đây là phương án thay thế, không phải lựa chọn khớp tuyệt đối.';
     }
 
-    return 'Mình chưa thấy cuốn nào thật sự khớp trọn vẹn với nhu cầu này trong kho hiện tại. Mình sẽ chuyển sang các lựa chọn gần nhất, ưu tiên những cuốn vẫn giữ được một phần tinh thần bạn đang tìm để bạn có phương án thay thế:';
+    return `Bạn đang tìm sách theo hướng "${this.formatNeedForAnswer(question)}", nhưng mình chưa thấy cuốn nào thật sự khớp trọn vẹn trong kho hiện tại. Mình sẽ chuyển sang các lựa chọn gần nhất, ưu tiên những cuốn vẫn giữ được một phần tinh thần bạn đang tìm. Đây là phương án thay thế để bạn có thêm lựa chọn, không phải khẳng định rằng chúng đúng hoàn toàn với nhu cầu ban đầu.`;
+  }
+
+  private formatNeedForAnswer(question: string): string {
+    return question
+      .replace(/\.\s*Yêu cầu bổ sung:\s*/i, ', ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 }
