@@ -329,12 +329,13 @@ export class AIAdvisorService {
                     'Chỉ được dùng id sách có trong danh sách ứng viên. Không bịa tên sách, tác giả hoặc id.',
                     'Câu trả lời phải nhắc đúng các sách trong recommendations, không nhắc sách ngoài danh sách đó.',
                     'Giọng văn tự nhiên như nhân viên nhà sách đang tư vấn: ấm, cụ thể, không lặp cụm "khớp với nhu cầu", không nói kiểu máy móc.',
+                    'Định dạng answer dễ đọc: 1 câu mở đầu, sau đó mỗi sách là một dòng bullet bắt đầu bằng "- Tên sách: ...".',
                     'Với mỗi sách, giải thích ngắn nội dung sách liên quan gì tới điều khách đang tìm. Không chỉ nói chung chung là phù hợp.',
                     'Nếu recommendations có 1 sách thì câu trả lời chỉ nói về 1 sách. Nếu có nhiều sách thì nói rõ từng sách rất ngắn gọn.',
                     'Ưu tiên: đúng chủ đề người dùng hỏi, còn hàng, mô tả sát nhu cầu, không trùng sách đã gợi ý trước trừ khi khách muốn tương tự.',
                     'Trả về JSON thuần, không markdown, không giải thích ngoài JSON.',
                     'Schema:',
-                    '{"answer":"câu trả lời tiếng Việt tự nhiên 2-4 câu","recommendations":[{"id":"book-id","reason":"lý do ngắn, cụ thể theo nhu cầu"}]}',
+                    '{"answer":"câu mở đầu\\n- Tên sách 1: giải thích ngắn\\n- Tên sách 2: giải thích ngắn","recommendations":[{"id":"book-id","reason":"lý do ngắn, cụ thể theo nhu cầu"}]}',
                     `Lịch sử hội thoại:\n${historyContext}`,
                     `Tin nhắn mới nhất của khách: ${question}`,
                     `Danh sách ứng viên trong kho:\n${bookContext}`,
@@ -429,13 +430,16 @@ export class AIAdvisorService {
 
     if (books.length === 1) {
       const book = books[0];
-      return `Nếu bạn đang tìm sách${needText}, mình sẽ ưu tiên "${book.title}". ${this.getBookTheme(book)} Đây là lựa chọn dễ bắt đầu trước, đặc biệt nếu bạn muốn đọc một cuốn có nội dung đi thẳng vào chủ đề thay vì phải so sánh quá nhiều.`;
+      return [
+        `Nếu bạn đang tìm sách${needText}, mình sẽ ưu tiên cuốn này:`,
+        `- ${book.title}: ${this.getBookTheme(book)} Đây là lựa chọn dễ bắt đầu trước, đặc biệt nếu bạn muốn đọc một cuốn có nội dung đi thẳng vào chủ đề.`,
+      ].join('\n');
     }
 
     const intro = `Mình chọn ${books.length} cuốn đáng cân nhắc${needText}:`;
     const details = books
-      .map((book) => `"${book.title}" phù hợp vì ${this.getBookTheme(book).replace(/^./, (char) => char.toLowerCase())}`)
-      .join(' ');
-    return `${intro} ${details}`;
+      .map((book) => `- ${book.title}: ${this.getBookTheme(book)}`)
+      .join('\n');
+    return `${intro}\n${details}`;
   }
 }
