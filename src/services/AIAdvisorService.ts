@@ -329,13 +329,16 @@ export class AIAdvisorService {
                     'Chỉ được dùng id sách có trong danh sách ứng viên. Không bịa tên sách, tác giả hoặc id.',
                     'Câu trả lời phải nhắc đúng các sách trong recommendations, không nhắc sách ngoài danh sách đó.',
                     'Giọng văn tự nhiên như nhân viên nhà sách đang tư vấn: ấm, cụ thể, không lặp cụm "khớp với nhu cầu", không nói kiểu máy móc.',
-                    'Định dạng answer dễ đọc: 1 câu mở đầu, sau đó mỗi sách là một dòng bullet bắt đầu bằng "- Tên sách: ...".',
+                    'Định dạng answer dễ đọc: 1 câu mở đầu tự nhiên, sau đó mỗi sách là một dòng bullet bắt đầu bằng "- Tên sách: ...".',
+                    'Câu mở đầu phải phản hồi như đang trò chuyện, không dùng mẫu "Mình chọn X cuốn..." hoặc "Dựa trên nhu cầu...".',
+                    'Ví dụ câu mở đầu tốt: "Chủ đề quê hương đất nước thì mình sẽ nghiêng về những cuốn có chất đời sống Việt Nam, ký ức tuổi thơ và cảm giác gần gũi."',
+                    'Nếu đây là câu hỏi nối tiếp, hãy nối mạch bằng các cụm tự nhiên như "Nếu muốn đổi sang lựa chọn nhẹ hơn...", "Vậy mình chuyển hướng sang...", "Theo gu bạn vừa nói...".',
                     'Với mỗi sách, giải thích ngắn nội dung sách liên quan gì tới điều khách đang tìm. Không chỉ nói chung chung là phù hợp.',
                     'Nếu recommendations có 1 sách thì câu trả lời chỉ nói về 1 sách. Nếu có nhiều sách thì nói rõ từng sách rất ngắn gọn.',
                     'Ưu tiên: đúng chủ đề người dùng hỏi, còn hàng, mô tả sát nhu cầu, không trùng sách đã gợi ý trước trừ khi khách muốn tương tự.',
                     'Trả về JSON thuần, không markdown, không giải thích ngoài JSON.',
                     'Schema:',
-                    '{"answer":"câu mở đầu\\n- Tên sách 1: giải thích ngắn\\n- Tên sách 2: giải thích ngắn","recommendations":[{"id":"book-id","reason":"lý do ngắn, cụ thể theo nhu cầu"}]}',
+                    '{"answer":"câu mở đầu tự nhiên, không máy móc\\n- Tên sách 1: giải thích ngắn\\n- Tên sách 2: giải thích ngắn","recommendations":[{"id":"book-id","reason":"lý do ngắn, cụ thể theo nhu cầu"}]}',
                     `Lịch sử hội thoại:\n${historyContext}`,
                     `Tin nhắn mới nhất của khách: ${question}`,
                     `Danh sách ứng viên trong kho:\n${bookContext}`,
@@ -426,20 +429,57 @@ export class AIAdvisorService {
       return 'Mình chưa tìm thấy cuốn nào thật sự khớp. Bạn thử mô tả rõ hơn về thể loại, tác giả, tâm trạng hoặc mục tiêu đọc nhé.';
     }
 
-    const needText = question ? ` với nhu cầu "${question}"` : '';
+    const intro = this.buildNaturalIntro(question, books);
 
     if (books.length === 1) {
       const book = books[0];
       return [
-        `Nếu bạn đang tìm sách${needText}, mình sẽ ưu tiên cuốn này:`,
-        `- ${book.title}: ${this.getBookTheme(book)} Đây là lựa chọn dễ bắt đầu trước, đặc biệt nếu bạn muốn đọc một cuốn có nội dung đi thẳng vào chủ đề.`,
+        intro,
+        `- ${book.title}: ${this.getBookTheme(book)} Đây là lựa chọn dễ bắt đầu trước, nhất là khi bạn muốn đọc một cuốn đi thẳng vào chủ đề.`,
       ].join('\n');
     }
 
-    const intro = `Mình chọn ${books.length} cuốn đáng cân nhắc${needText}:`;
     const details = books
       .map((book) => `- ${book.title}: ${this.getBookTheme(book)}`)
       .join('\n');
     return `${intro}\n${details}`;
+  }
+
+  private buildNaturalIntro(question: string, books: AdvisorRecommendation[]): string {
+    const normalizedQuestion = this.normalizeText(question);
+
+    if (!question.trim()) {
+      return books.length === 1
+        ? 'Mình sẽ ưu tiên cuốn này trước vì nó giữ đúng mạch bạn đang tìm:'
+        : 'Mình sẽ giữ mạch tư vấn hiện tại và gợi ý vài lựa chọn dễ tiếp cận hơn:';
+    }
+
+    if (/(khac|goi y khac|doi|thay|them|khong trung)/.test(normalizedQuestion)) {
+      return 'Vậy mình đổi sang vài lựa chọn khác nhưng vẫn giữ đúng tinh thần bạn đang tìm:';
+    }
+
+    if (/(re hon|gia tot|tiet kiem)/.test(normalizedQuestion)) {
+      return 'Nếu ưu tiên mức giá dễ chịu hơn, mình sẽ lọc theo hướng thực tế và vẫn bám sát gu đọc của bạn:';
+    }
+
+    if (/(nhe hon|de doc|thu gian)/.test(normalizedQuestion)) {
+      return 'Nếu muốn đọc nhẹ nhàng hơn, mình sẽ nghiêng về những cuốn dễ vào mạch và không quá nặng kiến thức:';
+    }
+
+    if (/(que huong|dat nuoc|viet nam|tuoi tho|lang que)/.test(normalizedQuestion)) {
+      return 'Chủ đề quê hương đất nước thì mình sẽ ưu tiên những cuốn có chất đời sống Việt Nam, ký ức tuổi thơ và cảm giác gần gũi:';
+    }
+
+    if (/(khoi nghiep|kinh doanh|startup|quan tri)/.test(normalizedQuestion)) {
+      return 'Với hướng kinh doanh khởi nghiệp, mình sẽ chọn những cuốn giúp bạn nhìn rõ cách xây ý tưởng, thử nghiệm và vận hành thực tế:';
+    }
+
+    if (/(tinh yeu|lang man|cam xuc)/.test(normalizedQuestion)) {
+      return 'Nếu bạn muốn một câu chuyện giàu cảm xúc, mình sẽ chọn những cuốn có mạch đọc mềm và dễ đồng cảm:';
+    }
+
+    return books.length === 1
+      ? 'Mình thấy cuốn này là điểm bắt đầu hợp lý nhất cho điều bạn đang tìm:'
+      : 'Mình sẽ gợi ý theo hướng dễ đọc trước, rồi bạn có thể chọn cuốn hợp gu nhất:';
   }
 }
