@@ -69,6 +69,14 @@ export interface EnvConfig {
     mailerSendApiToken: string;
   };
 
+  // Gmail API
+  gmail: {
+    clientId: string;
+    clientSecret: string;
+    refreshToken: string;
+    user: string;
+  };
+
   // Cloudinary
   cloudinary: {
     cloudName: string;
@@ -169,6 +177,13 @@ function parseEnv(): EnvConfig {
     email: {
       from: process.env['EMAIL_FROM'] || process.env['SMTP_USER'] || 'no-reply@example.com',
       mailerSendApiToken: process.env['MAILERSEND_API_TOKEN'] || '',
+    },
+
+    gmail: {
+      clientId: process.env['GMAIL_CLIENT_ID'] || '',
+      clientSecret: process.env['GMAIL_CLIENT_SECRET'] || '',
+      refreshToken: process.env['GMAIL_REFRESH_TOKEN'] || '',
+      user: process.env['GMAIL_USER'] || process.env['SMTP_USER'] || '',
     },
 
     cloudinary: {
