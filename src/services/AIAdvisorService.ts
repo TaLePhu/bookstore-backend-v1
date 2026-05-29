@@ -164,21 +164,22 @@ export class AIAdvisorService {
     const candidateLimit = Math.min(40, Math.max(limit * 5, 15));
     const semanticResult = await this.bookService.semanticSearchBooks(query, 1, candidateLimit, 0.25);
 
-    if (semanticResult.data.length > 0) {
-      const freshSemantic = semanticResult.data.filter((book) => !excludeBookIds.includes(book.id));
+    const visibleSemanticBooks = semanticResult.data.filter((book) => this.isVisibleBook(book));
+    if (visibleSemanticBooks.length > 0) {
+      const freshSemantic = visibleSemanticBooks.filter((book) => !excludeBookIds.includes(book.id));
       if (allowReuseFromPrevious) {
-        const reusedSemantic = semanticResult.data.filter((book) => excludeBookIds.includes(book.id));
+        const reusedSemantic = visibleSemanticBooks.filter((book) => excludeBookIds.includes(book.id));
         return this.mixFreshAndReusedBooks(freshSemantic, reusedSemantic, candidateLimit);
       }
 
-      const filteredSemantic = semanticResult.data.filter((book) => !effectiveExcludeBookIds.includes(book.id));
+      const filteredSemantic = visibleSemanticBooks.filter((book) => !effectiveExcludeBookIds.includes(book.id));
       if (filteredSemantic.length > 0) {
         return filteredSemantic.slice(0, candidateLimit);
       }
     }
 
     const keywordResult = await this.bookRepository.searchKeywordExtended(query, 1, candidateLimit);
-    const filteredKeyword = keywordResult.data.filter((book) => !effectiveExcludeBookIds.includes(book.id));
+    const filteredKeyword = keywordResult.data.filter((book) => this.isVisibleBook(book) && !effectiveExcludeBookIds.includes(book.id));
     if (filteredKeyword.length > 0) {
       return filteredKeyword.slice(0, candidateLimit);
     }
@@ -189,8 +190,9 @@ export class AIAdvisorService {
       sort: 'bestseller',
     });
 
-    const filteredFallback = fallback.data.filter((book) => !effectiveExcludeBookIds.includes(book.id));
-    return (filteredFallback.length > 0 ? filteredFallback : fallback.data).slice(0, candidateLimit);
+    const visibleFallback = fallback.data.filter((book) => this.isVisibleBook(book));
+    const filteredFallback = visibleFallback.filter((book) => !effectiveExcludeBookIds.includes(book.id));
+    return (filteredFallback.length > 0 ? filteredFallback : visibleFallback).slice(0, candidateLimit);
   }
 
   private mixFreshAndReusedBooks(
@@ -213,10 +215,32 @@ export class AIAdvisorService {
     return [...merged, ...topup].slice(0, limit);
   }
 
+  private isVisibleBook(book: BookResponse): boolean {
+    return !book.deletedAt && book.status !== 'deleted';
+  }
+
+  private getBookTheme(book: BookResponse): string {
+    const description = (book.description || '')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (description.length > 0) {
+      const firstSentence = description.match(/.+?[.!?](\s|$)/)?.[0]?.trim() || description;
+      return firstSentence.length > 180 ? `${firstSentence.slice(0, 177).trim()}...` : firstSentence;
+    }
+
+    if (book.category?.name) {
+      return `Nội dung thuộc nhóm ${book.category.name}, phù hợp để bạn bắt đầu đọc theo chủ đề này.`;
+    }
+
+    return 'Nội dung khá gần với nhu cầu bạn vừa mô tả.';
+  }
+
   private buildFallbackReason(query: string, book: BookResponse): string {
-    const categoryName = book.category?.name ? ` thuộc nhóm ${book.category.name}` : '';
-    const author = book.author ? ` của ${book.author}` : '';
-    return `Phù hợp với nhu cầu "${query}" vì sách${categoryName}${author} có nội dung gần với điều bạn đang tìm.`;
+    const theme = this.getBookTheme(book);
+    const author = book.author ? ` Tác giả ${book.author} giúp phần gợi ý này có góc nhìn rõ hơn.` : '';
+    return `${theme}${author}`;
   }
 
   private normalizeText(value: string): string {
@@ -290,9 +314,9 @@ export class AIAdvisorService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           generationConfig: {
-            temperature: 0.35,
-            topP: 0.8,
-            maxOutputTokens: 900,
+            temperature: 0.55,
+            topP: 0.9,
+            maxOutputTokens: 1100,
           },
           contents: [
             {
@@ -304,6 +328,8 @@ export class AIAdvisorService {
                     `Hãy chọn đúng ${targetCount} sách. Nếu chỉ có ít sách phù hợp, chọn ít hơn.`,
                     'Chỉ được dùng id sách có trong danh sách ứng viên. Không bịa tên sách, tác giả hoặc id.',
                     'Câu trả lời phải nhắc đúng các sách trong recommendations, không nhắc sách ngoài danh sách đó.',
+                    'Giọng văn tự nhiên như nhân viên nhà sách đang tư vấn: ấm, cụ thể, không lặp cụm "khớp với nhu cầu", không nói kiểu máy móc.',
+                    'Với mỗi sách, giải thích ngắn nội dung sách liên quan gì tới điều khách đang tìm. Không chỉ nói chung chung là phù hợp.',
                     'Nếu recommendations có 1 sách thì câu trả lời chỉ nói về 1 sách. Nếu có nhiều sách thì nói rõ từng sách rất ngắn gọn.',
                     'Ưu tiên: đúng chủ đề người dùng hỏi, còn hàng, mô tả sát nhu cầu, không trùng sách đã gợi ý trước trừ khi khách muốn tương tự.',
                     'Trả về JSON thuần, không markdown, không giải thích ngoài JSON.',
@@ -399,11 +425,17 @@ export class AIAdvisorService {
       return 'Mình chưa tìm thấy cuốn nào thật sự khớp. Bạn thử mô tả rõ hơn về thể loại, tác giả, tâm trạng hoặc mục tiêu đọc nhé.';
     }
 
+    const needText = question ? ` với nhu cầu "${question}"` : '';
+
     if (books.length === 1) {
-      return `Mình gợi ý "${books[0].title}" vì đây là lựa chọn sát nhất với nhu cầu${question ? ` "${question}"` : ''}. Bạn có thể xem phần thông tin sách bên dưới để kiểm tra giá, tác giả và tình trạng còn hàng.`;
+      const book = books[0];
+      return `Nếu bạn đang tìm sách${needText}, mình sẽ ưu tiên "${book.title}". ${this.getBookTheme(book)} Đây là lựa chọn dễ bắt đầu trước, đặc biệt nếu bạn muốn đọc một cuốn có nội dung đi thẳng vào chủ đề thay vì phải so sánh quá nhiều.`;
     }
 
-    const titles = books.map((book) => `"${book.title}"`).join(', ');
-    return `Mình gợi ý ${titles} vì các cuốn này khớp nhất với nhu cầu${question ? ` "${question}"` : ''} trong kho hiện có. Mỗi thẻ sách bên dưới có lý do riêng để bạn so sánh nhanh trước khi chọn.`;
+    const intro = `Mình chọn ${books.length} cuốn đáng cân nhắc${needText}:`;
+    const details = books
+      .map((book) => `"${book.title}" phù hợp vì ${this.getBookTheme(book).replace(/^./, (char) => char.toLowerCase())}`)
+      .join(' ');
+    return `${intro} ${details}`;
   }
 }
