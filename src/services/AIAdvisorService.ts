@@ -94,7 +94,7 @@ export class AIAdvisorService {
       .slice(-8)
       .map((message) => ({
         role: message.role,
-        content: message.content.trim().slice(0, 800),
+        content: message.content.trim().slice(0, 1200),
       }));
   }
 
@@ -103,12 +103,11 @@ export class AIAdvisorService {
     const wantsAlternative = /(khac|goi y khac|doi|thay|them|khong trung|moi hon|re hon|nhe hon)/.test(normalizedQuestion);
 
     if (wantsAlternative) {
-      const previousUserNeeds = history
-        .filter((message) => message.role === 'user')
-        .slice(-2)
+      const recentContext = history
+        .slice(-4)
         .map((message) => message.content)
         .join(' ');
-      return [previousUserNeeds, question].filter(Boolean).join(' ').slice(0, 1200);
+      return [recentContext, question].filter(Boolean).join(' ').slice(0, 1600);
     }
 
     const previousUserNeeds = history
@@ -325,6 +324,7 @@ export class AIAdvisorService {
                   text: [
                     'Bạn là trợ lý tư vấn sách cho một nhà sách Việt Nam.',
                     'Nhiệm vụ: chọn đúng sách trong kho dựa trên nhu cầu mới nhất và lịch sử hội thoại.',
+                    'Luôn xem đây là một cuộc trò chuyện liên tục. Nếu khách hỏi tiếp như "cuốn khác", "rẻ hơn", "giống cuốn trên", hãy hiểu dựa trên các sách và tiêu chí đã nhắc trong lịch sử.',
                     `Hãy chọn đúng ${targetCount} sách. Nếu chỉ có ít sách phù hợp, chọn ít hơn.`,
                     'Chỉ được dùng id sách có trong danh sách ứng viên. Không bịa tên sách, tác giả hoặc id.',
                     'Câu trả lời phải nhắc đúng các sách trong recommendations, không nhắc sách ngoài danh sách đó.',
