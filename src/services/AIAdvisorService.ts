@@ -13,6 +13,14 @@ interface GeminiTextResponse {
   }>;
 }
 
+interface AiBookSelection {
+  answer: string;
+  recommendations: Array<{
+    id: string;
+    reason: string;
+  }>;
+}
+
 export interface AdvisorRecommendation extends BookResponse {
   reason: string;
 }
@@ -50,7 +58,8 @@ export class AIAdvisorService {
     excludeBookIds: string[] = []
   ): Promise<AdvisorResponse> {
     const normalizedQuestion = question.trim();
-    const safeLimit = Math.min(8, Math.max(1, limit));
+    const safeLimit = Math.min(6, Math.max(1, limit));
+    const targetCount = this.getTargetRecommendationCount(normalizedQuestion, safeLimit);
     const safeHistory = this.normalizeHistory(history);
     const safeExcludeBookIds = this.normalizeExcludeBookIds(excludeBookIds);
     const allowReuseFromPrevious = this.shouldAllowReuseFromPrevious(normalizedQuestion);
@@ -65,23 +74,13 @@ export class AIAdvisorService {
     const searchQuery = this.buildSearchQuery(normalizedQuestion, safeHistory);
     const candidateBooks = await this.findCandidateBooks(
       searchQuery,
-      safeLimit,
+      Math.max(targetCount, safeLimit),
       safeExcludeBookIds,
       allowReuseFromPrevious
     );
-    const books = candidateBooks.map((book) => ({
-      ...book,
-      reason: this.buildFallbackReason(normalizedQuestion, book),
-    }));
 
-    const rawAnswer = await this.generateAnswer(normalizedQuestion, books, safeHistory);
-    const { answer, books: consistentBooks } = this.reconcileAnswerAndBooks(
-      normalizedQuestion,
-      rawAnswer,
-      books
-    );
-
-    return { answer, books: consistentBooks };
+    const selection = await this.generateSelection(normalizedQuestion, candidateBooks, targetCount, safeHistory);
+    return this.reconcileSelection(normalizedQuestion, selection, candidateBooks, targetCount);
   }
 
   private normalizeHistory(history: AdvisorHistoryMessage[]): AdvisorHistoryMessage[] {
@@ -104,12 +103,17 @@ export class AIAdvisorService {
     const wantsAlternative = /(khac|goi y khac|doi|thay|them|khong trung|moi hon|re hon|nhe hon)/.test(normalizedQuestion);
 
     if (wantsAlternative) {
-      return question.slice(0, 1200);
+      const previousUserNeeds = history
+        .filter((message) => message.role === 'user')
+        .slice(-2)
+        .map((message) => message.content)
+        .join(' ');
+      return [previousUserNeeds, question].filter(Boolean).join(' ').slice(0, 1200);
     }
 
     const previousUserNeeds = history
       .filter((message) => message.role === 'user')
-      .slice(-2)
+      .slice(-1)
       .map((message) => message.content)
       .join(' ');
 
@@ -128,6 +132,28 @@ export class AIAdvisorService {
     return [...new Set(excludeBookIds.filter((id) => typeof id === 'string').map((id) => id.trim()).filter(Boolean))].slice(-30);
   }
 
+  private getTargetRecommendationCount(question: string, requestedLimit: number): number {
+    const normalizedQuestion = this.normalizeText(question);
+    const explicitNumber = normalizedQuestion.match(/\b([1-6])\b/);
+    if (explicitNumber) {
+      return Math.min(requestedLimit, Math.max(1, Number(explicitNumber[1])));
+    }
+
+    if (/(mot cuon|1 cuon|duy nhat|tot nhat|phu hop nhat|nen doc cuon nao)/.test(normalizedQuestion)) {
+      return 1;
+    }
+
+    if (/(hai cuon|2 cuon|cap doi)/.test(normalizedQuestion)) {
+      return Math.min(requestedLimit, 2);
+    }
+
+    if (/(nhieu|vai cuon|danh sach|goi y|lua chon)/.test(normalizedQuestion)) {
+      return Math.min(requestedLimit, 4);
+    }
+
+    return Math.min(requestedLimit, 3);
+  }
+
   private async findCandidateBooks(
     query: string,
     limit: number,
@@ -135,42 +161,36 @@ export class AIAdvisorService {
     allowReuseFromPrevious: boolean
   ): Promise<BookResponse[]> {
     const effectiveExcludeBookIds = allowReuseFromPrevious ? [] : excludeBookIds;
-    const semanticLimit = Math.min(40, Math.max(limit * 4, 12));
-    const semanticResult = await this.bookService.semanticSearchBooks(query, 1, semanticLimit, 0.3);
+    const candidateLimit = Math.min(40, Math.max(limit * 5, 15));
+    const semanticResult = await this.bookService.semanticSearchBooks(query, 1, candidateLimit, 0.25);
 
     if (semanticResult.data.length > 0) {
       const freshSemantic = semanticResult.data.filter((book) => !excludeBookIds.includes(book.id));
       if (allowReuseFromPrevious) {
         const reusedSemantic = semanticResult.data.filter((book) => excludeBookIds.includes(book.id));
-        return this.mixFreshAndReusedBooks(freshSemantic, reusedSemantic, limit);
+        return this.mixFreshAndReusedBooks(freshSemantic, reusedSemantic, candidateLimit);
       }
 
       const filteredSemantic = semanticResult.data.filter((book) => !effectiveExcludeBookIds.includes(book.id));
       if (filteredSemantic.length > 0) {
-        return filteredSemantic.slice(0, limit);
+        return filteredSemantic.slice(0, candidateLimit);
       }
+    }
+
+    const keywordResult = await this.bookRepository.searchKeywordExtended(query, 1, candidateLimit);
+    const filteredKeyword = keywordResult.data.filter((book) => !effectiveExcludeBookIds.includes(book.id));
+    if (filteredKeyword.length > 0) {
+      return filteredKeyword.slice(0, candidateLimit);
     }
 
     const fallback = await this.bookRepository.findAllWithFilters({
       page: 1,
-      limit: Math.min(40, Math.max(limit * 4, 12)),
+      limit: candidateLimit,
       sort: 'bestseller',
     });
 
     const filteredFallback = fallback.data.filter((book) => !effectiveExcludeBookIds.includes(book.id));
-    if (filteredFallback.length > 0) {
-      if (allowReuseFromPrevious) {
-        const freshFallback = fallback.data.filter((book) => !excludeBookIds.includes(book.id));
-        const reusedFallback = fallback.data.filter((book) => excludeBookIds.includes(book.id));
-        return this.mixFreshAndReusedBooks(freshFallback, reusedFallback, limit);
-      }
-      return filteredFallback.slice(0, limit);
-    }
-
-    // If all candidates were excluded, allow reusing best available books.
-    return semanticResult.data.slice(0, limit).length > 0
-      ? semanticResult.data.slice(0, limit)
-      : fallback.data.slice(0, limit);
+    return (filteredFallback.length > 0 ? filteredFallback : fallback.data).slice(0, candidateLimit);
   }
 
   private mixFreshAndReusedBooks(
@@ -182,27 +202,21 @@ export class AIAdvisorService {
       return (freshBooks[0] ? [freshBooks[0]] : reusedBooks.slice(0, 1));
     }
 
-    const freshTarget = Math.max(1, Math.ceil(limit * 0.7));
-    const reusedTarget = Math.max(0, limit - freshTarget);
-
+    const freshTarget = Math.max(1, Math.ceil(limit * 0.8));
     const selectedFresh = freshBooks.slice(0, freshTarget);
     const selectedReused = reusedBooks
       .filter((book) => !selectedFresh.some((fresh) => fresh.id === book.id))
-      .slice(0, reusedTarget);
+      .slice(0, limit - selectedFresh.length);
 
     const merged = [...selectedFresh, ...selectedReused];
-    if (merged.length >= limit) {
-      return merged.slice(0, limit);
-    }
-
-    const topupFresh = freshBooks.filter((book) => !merged.some((picked) => picked.id === book.id));
-    const topupReused = reusedBooks.filter((book) => !merged.some((picked) => picked.id === book.id));
-    return [...merged, ...topupFresh, ...topupReused].slice(0, limit);
+    const topup = [...freshBooks, ...reusedBooks].filter((book) => !merged.some((picked) => picked.id === book.id));
+    return [...merged, ...topup].slice(0, limit);
   }
 
   private buildFallbackReason(query: string, book: BookResponse): string {
     const categoryName = book.category?.name ? ` thuộc nhóm ${book.category.name}` : '';
-    return `Phù hợp với nhu cầu "${query}" vì sách${categoryName} có nội dung gần với chủ đề bạn đang tìm.`;
+    const author = book.author ? ` của ${book.author}` : '';
+    return `Phù hợp với nhu cầu "${query}" vì sách${categoryName}${author} có nội dung gần với điều bạn đang tìm.`;
   }
 
   private normalizeText(value: string): string {
@@ -214,58 +228,55 @@ export class AIAdvisorService {
       .trim();
   }
 
-  private findFirstMentionedBookIndex(answer: string, books: AdvisorRecommendation[]): number {
-    const normalizedAnswer = this.normalizeText(answer);
-    return books.findIndex((book) => normalizedAnswer.includes(this.normalizeText(book.title)));
+  private parseJsonSelection(text: string): AiBookSelection | null {
+    const cleaned = text
+      .trim()
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/```$/i, '')
+      .trim();
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+
+    try {
+      const parsed = JSON.parse(match[0]) as AiBookSelection;
+      if (typeof parsed.answer !== 'string' || !Array.isArray(parsed.recommendations)) {
+        return null;
+      }
+      return parsed;
+    } catch {
+      return null;
+    }
   }
 
-  private reconcileAnswerAndBooks(
+  private async generateSelection(
     question: string,
-    answer: string,
-    books: AdvisorRecommendation[]
-  ): AdvisorResponse {
-    if (books.length === 0) {
-      return { answer: this.buildFallbackAnswer(question, books), books };
-    }
-
-    const mentionedBookIndex = this.findFirstMentionedBookIndex(answer, books);
-
-    if (mentionedBookIndex === -1) {
-      return {
-        answer: this.buildFallbackAnswer(question, books),
-        books,
-      };
-    }
-
-    if (mentionedBookIndex === 0) {
-      return { answer, books };
-    }
-
-    const reorderedBooks = [
-      books[mentionedBookIndex],
-      ...books.filter((_, index) => index !== mentionedBookIndex),
-    ];
-
-    return { answer, books: reorderedBooks };
-  }
-
-  private async generateAnswer(
-    question: string,
-    books: AdvisorRecommendation[],
+    candidateBooks: BookResponse[],
+    targetCount: number,
     history: AdvisorHistoryMessage[]
-  ): Promise<string> {
-    if (!this.apiKey || books.length === 0) {
-      return this.buildFallbackAnswer(question, books);
+  ): Promise<AiBookSelection | null> {
+    if (!this.apiKey || candidateBooks.length === 0) {
+      return null;
     }
 
     const modelPath = this.model.startsWith('models/') ? this.model : `models/${this.model}`;
     const url = `https://generativelanguage.googleapis.com/${this.apiVersion}/${modelPath}:generateContent?key=${this.apiKey}`;
-    const bookContext = books
+    const bookContext = candidateBooks
       .map((book, index) => {
         const categoryName = book.category?.name || 'Chưa phân loại';
-        return `${index + 1}. ${book.title} - ${book.author} | ${categoryName} | ${book.description || ''}`;
+        const price = Number(book.price || 0).toLocaleString('vi-VN');
+        const stock = Number(book.stock || 0) > 0 ? 'còn hàng' : 'hết hàng';
+        return [
+          `${index + 1}. id=${book.id}`,
+          `Tên: ${book.title}`,
+          `Tác giả: ${book.author || 'Chưa rõ'}`,
+          `Danh mục: ${categoryName}`,
+          `Giá: ${price}đ`,
+          `Tình trạng: ${stock}`,
+          `Mô tả: ${(book.description || '').slice(0, 700)}`,
+        ].join('\n');
       })
-      .join('\n');
+      .join('\n\n');
     const historyContext = history.length > 0
       ? history.map((message) => {
           const label = message.role === 'user' ? 'Khách' : 'Trợ lý';
@@ -278,22 +289,29 @@ export class AIAdvisorService {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          generationConfig: {
+            temperature: 0.35,
+            topP: 0.8,
+            maxOutputTokens: 900,
+          },
           contents: [
             {
               parts: [
                 {
                   text: [
                     'Bạn là trợ lý tư vấn sách cho một nhà sách Việt Nam.',
-                    'Trả lời bằng tiếng Việt, thân thiện, tự nhiên như đang trò chuyện liên tục với khách.',
-                    'Ghi nhớ các sở thích, ràng buộc và phản hồi trước đó của khách trong lịch sử hội thoại.',
-                    'Nếu khách hỏi tiếp kiểu "còn cuốn nào khác", "nhẹ hơn", "rẻ hơn", hãy hiểu dựa trên lịch sử.',
-                    'Trả lời ngắn gọn trong 2-4 câu, có thể hỏi thêm 1 câu nếu thiếu thông tin.',
-                    'Chỉ dựa trên danh sách sách được cung cấp, không bịa sách ngoài kho.',
-                    'Khi nêu tên sách, chỉ nêu đúng tên sách trong danh sách. Ưu tiên giới thiệu sách số 1 trước.',
-                    'Câu trả lời phải khớp với các sách sẽ hiển thị bên dưới.',
+                    'Nhiệm vụ: chọn đúng sách trong kho dựa trên nhu cầu mới nhất và lịch sử hội thoại.',
+                    `Hãy chọn đúng ${targetCount} sách. Nếu chỉ có ít sách phù hợp, chọn ít hơn.`,
+                    'Chỉ được dùng id sách có trong danh sách ứng viên. Không bịa tên sách, tác giả hoặc id.',
+                    'Câu trả lời phải nhắc đúng các sách trong recommendations, không nhắc sách ngoài danh sách đó.',
+                    'Nếu recommendations có 1 sách thì câu trả lời chỉ nói về 1 sách. Nếu có nhiều sách thì nói rõ từng sách rất ngắn gọn.',
+                    'Ưu tiên: đúng chủ đề người dùng hỏi, còn hàng, mô tả sát nhu cầu, không trùng sách đã gợi ý trước trừ khi khách muốn tương tự.',
+                    'Trả về JSON thuần, không markdown, không giải thích ngoài JSON.',
+                    'Schema:',
+                    '{"answer":"câu trả lời tiếng Việt tự nhiên 2-4 câu","recommendations":[{"id":"book-id","reason":"lý do ngắn, cụ thể theo nhu cầu"}]}',
                     `Lịch sử hội thoại:\n${historyContext}`,
                     `Tin nhắn mới nhất của khách: ${question}`,
-                    `Sách có thể gợi ý từ kho:\n${bookContext}`,
+                    `Danh sách ứng viên trong kho:\n${bookContext}`,
                   ].join('\n'),
                 },
               ],
@@ -312,19 +330,80 @@ export class AIAdvisorService {
         .join('')
         .trim();
 
-      return text || this.buildFallbackAnswer(question, books);
+      return text ? this.parseJsonSelection(text) : null;
     } catch (error) {
       console.warn('AI advisor generation failed, fallback to deterministic answer:', error);
-      return this.buildFallbackAnswer(question, books);
+      return null;
     }
+  }
+
+  private reconcileSelection(
+    question: string,
+    selection: AiBookSelection | null,
+    candidateBooks: BookResponse[],
+    targetCount: number
+  ): AdvisorResponse {
+    if (candidateBooks.length === 0) {
+      return {
+        answer: 'Mình chưa tìm thấy cuốn nào thật sự khớp. Bạn thử mô tả rõ hơn về thể loại, tác giả, tâm trạng hoặc mục tiêu đọc nhé.',
+        books: [],
+      };
+    }
+
+    const candidatesById = new Map(candidateBooks.map((book) => [book.id, book]));
+    const selected: AdvisorRecommendation[] = [];
+
+    if (selection) {
+      for (const item of selection.recommendations) {
+        const book = candidatesById.get(item.id);
+        if (!book || selected.some((selectedBook) => selectedBook.id === book.id)) continue;
+
+        selected.push({
+          ...book,
+          reason: item.reason?.trim() || this.buildFallbackReason(question, book),
+        });
+
+        if (selected.length >= targetCount) break;
+      }
+    }
+
+    if (selected.length === 0) {
+      selected.push(
+        ...candidateBooks.slice(0, targetCount).map((book) => ({
+          ...book,
+          reason: this.buildFallbackReason(question, book),
+        }))
+      );
+    }
+
+    const answer = selection?.answer?.trim()
+      ? this.ensureAnswerMatchesBooks(selection.answer.trim(), selected)
+      : this.buildFallbackAnswer(question, selected);
+
+    return { answer, books: selected };
+  }
+
+  private ensureAnswerMatchesBooks(answer: string, books: AdvisorRecommendation[]): string {
+    const normalizedAnswer = this.normalizeText(answer);
+    const allMentioned = books.every((book) => normalizedAnswer.includes(this.normalizeText(book.title)));
+
+    if (allMentioned) {
+      return answer;
+    }
+
+    return this.buildFallbackAnswer('', books);
   }
 
   private buildFallbackAnswer(question: string, books: AdvisorRecommendation[]): string {
     if (books.length === 0) {
-      return 'Mình chưa tìm thấy cuốn nào thật khớp. Bạn thử mô tả rõ hơn về thể loại, tác giả, tâm trạng hoặc mục tiêu đọc nhé.';
+      return 'Mình chưa tìm thấy cuốn nào thật sự khớp. Bạn thử mô tả rõ hơn về thể loại, tác giả, tâm trạng hoặc mục tiêu đọc nhé.';
     }
 
-    const titles = books.slice(0, 3).map((book) => `"${book.title}"`).join(', ');
-    return `Dựa trên nhu cầu "${question}", mình gợi ý ${titles} từ kho sách hiện có. Bạn có thể bắt đầu với "${books[0].title}" vì đây là lựa chọn phù hợp nhất trong danh sách đang hiển thị bên dưới.`;
+    if (books.length === 1) {
+      return `Mình gợi ý "${books[0].title}" vì đây là lựa chọn sát nhất với nhu cầu${question ? ` "${question}"` : ''}. Bạn có thể xem phần thông tin sách bên dưới để kiểm tra giá, tác giả và tình trạng còn hàng.`;
+    }
+
+    const titles = books.map((book) => `"${book.title}"`).join(', ');
+    return `Mình gợi ý ${titles} vì các cuốn này khớp nhất với nhu cầu${question ? ` "${question}"` : ''} trong kho hiện có. Mỗi thẻ sách bên dưới có lý do riêng để bạn so sánh nhanh trước khi chọn.`;
   }
 }
