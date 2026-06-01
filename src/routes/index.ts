@@ -10,6 +10,7 @@ import addressRoutes from './address.routes';
 import managementRoutes from './management.routes';
 import aiAdvisorRoutes from './ai-advisor.routes';
 import promotionRoutes from './promotion.routes';
+import paymentRoutes from './payment.routes';
 
 const router = Router();
 
@@ -24,6 +25,7 @@ router.use('/management', managementRoutes);
 router.use('/addresses', addressRoutes);
 router.use('/ai-advisor', aiAdvisorRoutes);
 router.use('/promotions', promotionRoutes);
+router.use('/payments', paymentRoutes);
 
 export default router;
 

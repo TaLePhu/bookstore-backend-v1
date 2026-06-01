@@ -92,6 +92,16 @@ export interface EnvConfig {
     generationModel: string;
     apiVersion: string;
   };
+
+  frontendUrl: string;
+  apiPublicUrl: string;
+  momo: {
+    demoMode: boolean;
+    endpoint: string;
+    partnerCode: string;
+    accessKey: string;
+    secretKey: string;
+  };
 }
 
 function parseEnv(): EnvConfig {
@@ -198,6 +208,16 @@ function parseEnv(): EnvConfig {
       embeddingModel: process.env['GEMINI_EMBEDDING_MODEL'] || 'text-embedding-004',
       generationModel: process.env['GEMINI_GENERATION_MODEL'] || 'gemini-2.5-flash',
       apiVersion: process.env['GEMINI_API_VERSION'] || 'v1',
+    },
+
+    frontendUrl: (process.env['FRONTEND_URL'] || 'http://localhost:5173').replace(/\/+$/, ''),
+    apiPublicUrl: (process.env['API_PUBLIC_URL'] || `http://localhost:${process.env['PORT'] || '3000'}`).replace(/\/+$/, ''),
+    momo: {
+      demoMode: process.env['MOMO_DEMO_MODE'] !== 'false',
+      endpoint: (process.env['MOMO_ENDPOINT'] || 'https://test-payment.momo.vn/v2/gateway/api/create').replace(/\/+$/, ''),
+      partnerCode: process.env['MOMO_PARTNER_CODE'] || '',
+      accessKey: process.env['MOMO_ACCESS_KEY'] || '',
+      secretKey: process.env['MOMO_SECRET_KEY'] || '',
     },
   };
 }

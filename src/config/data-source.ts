@@ -49,6 +49,7 @@ import { AddPromotionBannerImage1779400000000 } from '../migrations/177940000000
 import { AddReviewOrderLink1779500000000 } from '../migrations/1779500000000-AddReviewOrderLink';
 import { CreateAIAdvisorConversations1779600000000 } from '../migrations/1779600000000-CreateAIAdvisorConversations';
 import { ExtendUserBehaviorsForRecommendations1779700000000 } from '../migrations/1779700000000-ExtendUserBehaviorsForRecommendations';
+import { AddMomoPaymentFields1779800000000 } from '../migrations/1779800000000-AddMomoPaymentFields';
 
 const env = getEnv();
 
@@ -110,6 +111,7 @@ export const AppDataSource = new DataSource({
     AddReviewOrderLink1779500000000,
     CreateAIAdvisorConversations1779600000000,
     ExtendUserBehaviorsForRecommendations1779700000000,
+    AddMomoPaymentFields1779800000000,
   ],
   subscribers: [],
   cache: false,

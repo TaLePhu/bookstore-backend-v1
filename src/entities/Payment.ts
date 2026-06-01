@@ -14,6 +14,7 @@ export enum PaymentMethod {
   DEBIT_CARD = 'DEBIT_CARD',
   BANK_TRANSFER = 'BANK_TRANSFER',
   WALLET = 'WALLET',
+  MOMO = 'MOMO',
   COD = 'COD',
 }
 
@@ -37,6 +38,33 @@ export class Payment {
 
   @Column('enum', { enum: PaymentStatus, default: PaymentStatus.PENDING })
   status: PaymentStatus;
+
+  @Column('varchar', { length: 50, nullable: true })
+  provider: string | null;
+
+  @Column('varchar', { length: 100, nullable: true })
+  providerRequestId: string | null;
+
+  @Column('varchar', { length: 200, nullable: true })
+  providerOrderId: string | null;
+
+  @Column('varchar', { length: 100, nullable: true })
+  providerTransactionId: string | null;
+
+  @Column('text', { nullable: true })
+  paymentUrl: string | null;
+
+  @Column('text', { nullable: true })
+  qrCodeUrl: string | null;
+
+  @Column('text', { nullable: true })
+  deeplink: string | null;
+
+  @Column('jsonb', { nullable: true })
+  rawResponse: Record<string, unknown> | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  paidAt: Date | null;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -19,6 +19,7 @@ import { TOKENS } from '@config/container';
 import { dispatchEmail } from '@config/queue';
 import redisConfig from '@config/redis';
 import { BookService } from '@services/BookService';
+import { MomoPaymentService } from '@services/MomoPaymentService';
 
 const maskEmail = (email: string): string => {
   const [name, domain] = email.split('@');
@@ -49,6 +50,8 @@ const isCancelRequestResolutionLog = (log: OrderStatusLog): boolean =>
 
 @injectable()
 export class OrderService {
+  private momoPaymentService = new MomoPaymentService();
+
   constructor(
     @inject(TOKENS.ORDER_REPOSITORY) private orderRepository: IOrderRepository,
     @inject(TOKENS.CART_REPOSITORY) private cartRepository: ICartRepository
@@ -384,6 +387,9 @@ export class OrderService {
 
     // 8. Reload Order kèm relations để trả về cho client
     const result = await this.orderRepository.findByIdAndUserId(savedOrder.id, userId);
+    if (result && (dto.paymentMethod ?? PaymentMethod.COD) === PaymentMethod.MOMO) {
+      (result as Order & { momoPayment?: unknown }).momoPayment = await this.momoPaymentService.createPayment(result);
+    }
     this.queueOrderConfirmationEmail(result!, dto.email || checkoutUser?.email);
     return result!;
   }
@@ -489,6 +495,9 @@ export class OrderService {
     });
 
     const result = await this.orderRepository.findByIdAndUserId(savedOrder.id, userId);
+    if (result && (dto.paymentMethod ?? PaymentMethod.COD) === PaymentMethod.MOMO) {
+      (result as Order & { momoPayment?: unknown }).momoPayment = await this.momoPaymentService.createPayment(result);
+    }
     this.queueOrderConfirmationEmail(result!, dto.email || fallbackEmail);
     return result!;
   }
@@ -619,6 +628,9 @@ export class OrderService {
     });
 
     const result = await this.orderRepository.findById(savedOrder.id);
+    if (result && (dto.paymentMethod ?? PaymentMethod.COD) === PaymentMethod.MOMO) {
+      (result as Order & { momoPayment?: unknown }).momoPayment = await this.momoPaymentService.createPayment(result);
+    }
     this.queueOrderConfirmationEmail(result!, dto.email);
     return result!;
   }
@@ -829,6 +841,7 @@ export class OrderService {
       [PaymentMethod.DEBIT_CARD]: 'Thẻ ghi nợ',
       [PaymentMethod.BANK_TRANSFER]: 'Chuyển khoản ngân hàng',
       [PaymentMethod.WALLET]: 'Ví điện tử',
+      [PaymentMethod.MOMO]: 'MoMo',
       [PaymentMethod.COD]: 'Thanh toán khi nhận hàng (COD)',
     };
     return labels[method] || method;
