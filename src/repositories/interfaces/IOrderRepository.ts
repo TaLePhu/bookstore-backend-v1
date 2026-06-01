@@ -1,4 +1,5 @@
 import { Order, OrderStatus } from '@entities/Order';
+import { PaymentMethod, PaymentStatus } from '@entities/Payment';
 
 export interface AdminOrderListItem {
   id: string;
@@ -7,6 +8,9 @@ export interface AdminOrderListItem {
   customerUserName: string | null;
   customerEmail: string | null;
   customerPhone: string | null;
+  addressSummary: string | null;
+  paymentMethod: PaymentMethod | null;
+  paymentStatus: PaymentStatus | null;
   createdAt: Date;
   totalItems: number;
   totalAmount: number;
@@ -45,6 +49,12 @@ export interface IOrderRepository {
     page: number;
     limit: number;
     status?: OrderStatus;
+    q?: string;
+    cancelRequested?: boolean;
+    paymentMethod?: PaymentMethod;
+    paymentStatus?: PaymentStatus;
+    dateFrom?: Date;
+    dateTo?: Date;
   }): Promise<{ orders: AdminOrderListItem[]; total: number }>;
 
   /**

@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { injectable } from 'tsyringe';
 import { AdminOrderService } from '@services/AdminOrderService';
 import { OrderStatus } from '@entities/Order';
+import { PaymentMethod, PaymentStatus } from '@entities/Payment';
 import { AppError } from '@utils/errors';
 import { UpdateOrderStatusDto } from '@dtos/admin/UpdateOrderStatusDto';
 import { RejectCancelRequestDto } from '@dtos/admin/RejectCancelRequestDto';
@@ -31,6 +32,38 @@ function parseStatus(value?: string): OrderStatus | undefined {
   return normalized as OrderStatus;
 }
 
+function parsePaymentMethod(value?: string): PaymentMethod | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toUpperCase();
+  const values = Object.values(PaymentMethod) as string[];
+  if (!values.includes(normalized)) {
+    throw new AppError('Phuong thuc thanh toan khong hop le', 400);
+  }
+  return normalized as PaymentMethod;
+}
+
+function parsePaymentStatus(value?: string): PaymentStatus | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toUpperCase();
+  const values = Object.values(PaymentStatus) as string[];
+  if (!values.includes(normalized)) {
+    throw new AppError('Trang thai thanh toan khong hop le', 400);
+  }
+  return normalized as PaymentStatus;
+}
+
+function parseDate(value?: string, endOfDay = false): Date | undefined {
+  if (!value) return undefined;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new AppError('Ngay loc khong hop le', 400);
+  }
+  if (endOfDay) {
+    date.setHours(23, 59, 59, 999);
+  }
+  return date;
+}
+
 @injectable()
 export class AdminOrderController {
   constructor(private adminOrderService: AdminOrderService) {}
@@ -39,8 +72,26 @@ export class AdminOrderController {
     try {
       const { page, limit } = getSafePagination(req.query.page, req.query.limit);
       const status = typeof req.query.status === 'string' ? parseStatus(req.query.status) : undefined;
+      const q = typeof req.query.q === 'string' ? req.query.q.trim() : undefined;
+      const cancelRequested = req.query.cancelRequested === 'true';
+      const paymentMethod =
+        typeof req.query.paymentMethod === 'string' ? parsePaymentMethod(req.query.paymentMethod) : undefined;
+      const paymentStatus =
+        typeof req.query.paymentStatus === 'string' ? parsePaymentStatus(req.query.paymentStatus) : undefined;
+      const dateFrom = typeof req.query.dateFrom === 'string' ? parseDate(req.query.dateFrom) : undefined;
+      const dateTo = typeof req.query.dateTo === 'string' ? parseDate(req.query.dateTo, true) : undefined;
 
-      const result = await this.adminOrderService.listOrders({ page, limit, status });
+      const result = await this.adminOrderService.listOrders({
+        page,
+        limit,
+        status,
+        q,
+        cancelRequested,
+        paymentMethod,
+        paymentStatus,
+        dateFrom,
+        dateTo,
+      });
 
       res.status(200).json({
         success: true,

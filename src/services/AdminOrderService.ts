@@ -4,6 +4,7 @@ import { TOKENS } from '@config/container';
 import { Order, OrderStatus } from '@entities/Order';
 import { OrderStatusLog } from '@entities/OrderStatusLog';
 import { Book } from '@entities/Book';
+import { PaymentMethod, PaymentStatus } from '@entities/Payment';
 import { IOrderRepository } from '@repositories/interfaces/IOrderRepository';
 import { AppError, NotFoundError } from '@utils/errors';
 import { UpdateOrderStatusDto } from '@dtos/admin/UpdateOrderStatusDto';
@@ -33,6 +34,9 @@ export interface ManagementOrderListItem {
   customerName: string;
   customerEmail: string | null;
   customerPhone: string | null;
+  addressSummary: string | null;
+  paymentMethod: PaymentMethod | null;
+  paymentStatus: PaymentStatus | null;
   createdAt: Date;
   totalItems: number;
   totalAmount: number;
@@ -50,12 +54,24 @@ export class AdminOrderService {
     page: number;
     limit: number;
     status?: OrderStatus;
+    q?: string;
+    cancelRequested?: boolean;
+    paymentMethod?: PaymentMethod;
+    paymentStatus?: PaymentStatus;
+    dateFrom?: Date;
+    dateTo?: Date;
   }): Promise<{ data: ManagementOrderListItem[]; total: number; page: number; limit: number }> {
-    const { page, limit, status } = params;
+    const { page, limit, status, q, cancelRequested, paymentMethod, paymentStatus, dateFrom, dateTo } = params;
     const { orders, total } = await this.orderRepository.findAllForManagement({
       page,
       limit,
       status,
+      q,
+      cancelRequested,
+      paymentMethod,
+      paymentStatus,
+      dateFrom,
+      dateTo,
     });
 
     const data = orders.map((item) => {
@@ -66,6 +82,9 @@ export class AdminOrderService {
         customerName,
         customerEmail: item.customerEmail,
         customerPhone: item.customerPhone,
+        addressSummary: item.addressSummary,
+        paymentMethod: item.paymentMethod,
+        paymentStatus: item.paymentStatus,
         createdAt: item.createdAt,
         totalItems: item.totalItems,
         totalAmount: item.totalAmount,
