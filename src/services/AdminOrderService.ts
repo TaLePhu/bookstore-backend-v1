@@ -32,6 +32,7 @@ export interface ManagementOrderListItem {
   orderCode: string | null;
   customerName: string;
   customerEmail: string | null;
+  customerPhone: string | null;
   createdAt: Date;
   totalItems: number;
   totalAmount: number;
@@ -64,6 +65,7 @@ export class AdminOrderService {
         orderCode: item.orderCode,
         customerName,
         customerEmail: item.customerEmail,
+        customerPhone: item.customerPhone,
         createdAt: item.createdAt,
         totalItems: item.totalItems,
         totalAmount: item.totalAmount,

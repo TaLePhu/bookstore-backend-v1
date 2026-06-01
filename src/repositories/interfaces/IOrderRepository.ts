@@ -6,6 +6,7 @@ export interface AdminOrderListItem {
   customerName: string | null;
   customerUserName: string | null;
   customerEmail: string | null;
+  customerPhone: string | null;
   createdAt: Date;
   totalItems: number;
   totalAmount: number;

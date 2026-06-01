@@ -51,6 +51,7 @@ export class OrderRepository implements IOrderRepository {
     const qb = this.repository
       .createQueryBuilder('order_entity')
       .leftJoin('order_entity.user', 'user')
+      .leftJoin('order_entity.address', 'address')
       .leftJoin('order_entity.items', 'item')
       .select('order_entity.id', 'id')
       .addSelect('order_entity.orderCode', 'orderCode')
@@ -60,6 +61,7 @@ export class OrderRepository implements IOrderRepository {
       .addSelect('user.fullName', 'customerName')
       .addSelect('user.userName', 'customerUserName')
       .addSelect('user.email', 'customerEmail')
+      .addSelect('address.phone', 'customerPhone')
       .addSelect('COALESCE(SUM(item.quantity), 0)', 'totalItems')
       .addSelect(
         `(
@@ -97,6 +99,7 @@ export class OrderRepository implements IOrderRepository {
       )
       .groupBy('order_entity.id')
       .addGroupBy('user.id')
+      .addGroupBy('address.id')
       .orderBy('order_entity.createdAt', 'DESC')
       .skip(skip)
       .take(limit);
@@ -116,6 +119,7 @@ export class OrderRepository implements IOrderRepository {
       customerName: row.customerName ?? null,
       customerUserName: row.customerUserName ?? null,
       customerEmail: row.customerEmail ?? null,
+      customerPhone: row.customerPhone ?? null,
       createdAt: new Date(row.createdAt),
       totalItems: Number(row.totalItems ?? 0),
       totalAmount: Number(row.totalAmount ?? 0),
