@@ -160,6 +160,40 @@ export class BookController {
     }
   };
 
+  smartSearchBooks = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const query = req.query.q as string || '';
+      const { page, limit } = getSafePagination(req.query.page, req.query.limit);
+
+      const result = await this.bookService.smartSearchBooks(query, page, limit);
+      await this.bookService.recordUserQueryEvent(req.user?.userId, BehaviorType.SEARCH, query, {
+        page,
+        limit,
+        mode: result.mode,
+        confidence: result.confidence,
+        isFallback: result.isFallback,
+        resultCount: result.data.length,
+      });
+
+      res.status(200).json({
+        success: true,
+        data: result.data,
+        pagination: {
+          total: result.total,
+          page: result.page,
+          limit: result.limit
+        },
+        query: result.query,
+        mode: result.mode,
+        confidence: result.confidence,
+        message: result.message,
+        isFallback: result.isFallback
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   semanticSearchBooks = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const query = req.query.q as string || '';

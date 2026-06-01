@@ -21,6 +21,8 @@ import { EmbeddingSearchService } from '@services/EmbeddingSearchService';
 import { EmbeddingProviderService } from '@services/EmbeddingProviderService';
 
 type HomeRecommendationSource = 'personalized' | 'popular';
+type SmartSearchMode = 'keyword' | 'semantic' | 'mixed';
+type SmartSearchConfidence = 'high' | 'medium' | 'low';
 
 interface HomeRecommendedBook extends BookResponse {
   reason: string;
@@ -31,6 +33,18 @@ interface HomeRecommendationResponse {
   title: string;
   subtitle: string;
   books: HomeRecommendedBook[];
+}
+
+interface SmartSearchResponse {
+  data: BookResponse[];
+  total: number;
+  page: number;
+  limit: number;
+  query: string;
+  mode: SmartSearchMode;
+  confidence: SmartSearchConfidence;
+  message: string;
+  isFallback: boolean;
 }
 
 interface RecommendationSignalProfile {
@@ -622,8 +636,129 @@ export class BookService {
     if (!query || query.trim() === '') {
       return { data: [], total: 0, page, limit };
     }
-    const { data, total } = await this.bookRepository.search(query, page, limit);
+    const { data, total } = await this.bookRepository.searchRanked(query, page, limit);
     return { data, total, page, limit };
+  }
+
+  async smartSearchBooks(query: string, page: number = 1, limit: number = 10): Promise<SmartSearchResponse> {
+    const normalizedQuery = query.trim().replace(/\s+/g, ' ');
+
+    if (!normalizedQuery) {
+      return {
+        data: [],
+        total: 0,
+        page,
+        limit,
+        query: '',
+        mode: 'keyword',
+        confidence: 'low',
+        message: '',
+        isFallback: false,
+      };
+    }
+
+    const keyword = await this.bookRepository.searchRanked(normalizedQuery, page, limit);
+    const shouldTrustKeyword = keyword.data.length > 0 && this.isLikelyExactSearch(normalizedQuery);
+
+    if (shouldTrustKeyword) {
+      return {
+        data: keyword.data,
+        total: keyword.total,
+        page,
+        limit,
+        query: normalizedQuery,
+        mode: 'keyword',
+        confidence: 'high',
+        message: `Tìm thấy sách khớp với "${normalizedQuery}".`,
+        isFallback: false,
+      };
+    }
+
+    if (keyword.data.length > 0 && !this.isNaturalLanguageSearch(normalizedQuery)) {
+      return {
+        data: keyword.data,
+        total: keyword.total,
+        page,
+        limit,
+        query: normalizedQuery,
+        mode: 'keyword',
+        confidence: 'medium',
+        message: `Tìm thấy một số kết quả gần với "${normalizedQuery}".`,
+        isFallback: false,
+      };
+    }
+
+    const semantic = await this.semanticSearchBooks(normalizedQuery, page, limit, 0.35);
+    if (semantic.data.length > 0) {
+      const merged = this.mergeSearchResults(keyword.data, semantic.data, limit);
+      return {
+        data: merged,
+        total: Math.max(keyword.total, semantic.total, merged.length),
+        page,
+        limit,
+        query: normalizedQuery,
+        mode: keyword.data.length > 0 ? 'mixed' : 'semantic',
+        confidence: keyword.data.length > 0 ? 'medium' : 'low',
+        message: keyword.data.length > 0
+          ? `Có vài kết quả khớp và gợi ý gần nghĩa cho "${normalizedQuery}".`
+          : `Chưa thấy tên sách khớp rõ, đây là các gợi ý gần với nhu cầu "${normalizedQuery}".`,
+        isFallback: false,
+      };
+    }
+
+    const fallback = await this.bookRepository.findAllWithFilters({ page: 1, limit, sort: 'bestseller' });
+    return {
+      data: fallback.data,
+      total: fallback.total,
+      page: 1,
+      limit,
+      query: normalizedQuery,
+      mode: 'keyword',
+      confidence: 'low',
+      message: `Chưa tìm thấy sách khớp với "${normalizedQuery}". Bạn có thể tham khảo vài sách đang được quan tâm.`,
+      isFallback: true,
+    };
+  }
+
+  private mergeSearchResults(primary: BookResponse[], secondary: BookResponse[], limit: number): BookResponse[] {
+    const map = new Map<string, BookResponse>();
+    [...primary, ...secondary].forEach((book) => {
+      if (!map.has(book.id)) {
+        map.set(book.id, book);
+      }
+    });
+    return Array.from(map.values()).slice(0, limit);
+  }
+
+  private isLikelyExactSearch(query: string): boolean {
+    return query.length <= 48 && query.split(/\s+/).length <= 5;
+  }
+
+  private isNaturalLanguageSearch(query: string): boolean {
+    const normalized = this.normalizeSignal(query);
+    const words = normalized.split(' ').filter(Boolean);
+    if (words.length >= 6) return true;
+
+    const intentWords = new Set([
+      'can',
+      'muon',
+      'tim',
+      'cho',
+      've',
+      'giup',
+      'phu',
+      'hop',
+      'nhe',
+      'de',
+      'doc',
+      'nguoi',
+      'moi',
+      'hoc',
+      'thu',
+      'gian',
+    ]);
+
+    return words.some((word) => intentWords.has(word));
   }
 
   async semanticSearchBooks(

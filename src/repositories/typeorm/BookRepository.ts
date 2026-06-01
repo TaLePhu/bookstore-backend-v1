@@ -157,6 +157,55 @@ export class BookRepository implements IBookRepository {
     return { data, total };
   }
 
+  async searchRanked(query: string, page: number, limit: number): Promise<{ data: BookResponse[]; total: number }> {
+    const skip = (page - 1) * limit;
+    const normalizedQuery = query.trim();
+    const compactQuery = normalizedQuery.replace(/\s+/g, ' ');
+    const prefixQuery = `${compactQuery}%`;
+    const containsQuery = `%${compactQuery}%`;
+
+    const qb = this.repository
+      .createQueryBuilder('book')
+      .leftJoinAndSelect('book.category', 'category')
+      .leftJoinAndSelect('book.images', 'images')
+      .where(
+        `book.title ILIKE :containsQuery
+        OR book.author ILIKE :containsQuery
+        OR book.description ILIKE :containsQuery
+        OR category.name ILIKE :containsQuery`,
+        { containsQuery }
+      )
+      .addSelect(
+        `CASE
+          WHEN book.title ILIKE :exactQuery THEN 100
+          WHEN book.title ILIKE :prefixQuery THEN 90
+          WHEN book.title ILIKE :containsQuery THEN 75
+          WHEN book.author ILIKE :exactQuery THEN 65
+          WHEN book.author ILIKE :containsQuery THEN 55
+          WHEN category.name ILIKE :exactQuery THEN 45
+          WHEN category.name ILIKE :containsQuery THEN 35
+          WHEN book.description ILIKE :containsQuery THEN 15
+          ELSE 0
+        END`,
+        'search_rank'
+      )
+      .setParameters({
+        exactQuery: compactQuery,
+        prefixQuery,
+        containsQuery,
+      })
+      .orderBy('search_rank', 'DESC')
+      .addOrderBy('book.soldCount', 'DESC')
+      .addOrderBy('book.createdAt', 'DESC')
+      .skip(skip)
+      .take(limit);
+
+    const [books, total] = await qb.getManyAndCount();
+    const data = await this.mapBooksToResponse(books);
+
+    return { data, total };
+  }
+
   async searchKeywordExtended(
     query: string,
     page: number,
