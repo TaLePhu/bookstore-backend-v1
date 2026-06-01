@@ -4,7 +4,7 @@ import { TOKENS } from '@config/container';
 import { Order, OrderStatus } from '@entities/Order';
 import { OrderStatusLog } from '@entities/OrderStatusLog';
 import { Book } from '@entities/Book';
-import { PaymentMethod, PaymentStatus } from '@entities/Payment';
+import { Payment, PaymentMethod, PaymentStatus } from '@entities/Payment';
 import { IOrderRepository } from '@repositories/interfaces/IOrderRepository';
 import { AppError, NotFoundError } from '@utils/errors';
 import { UpdateOrderStatusDto } from '@dtos/admin/UpdateOrderStatusDto';
@@ -174,6 +174,20 @@ export class AdminOrderService {
       const previousStatus = order.status;
       order.status = nextStatus;
       await manager.save(Order, order);
+
+      if (nextStatus === OrderStatus.COMPLETED) {
+        await manager.update(
+          Payment,
+          {
+            orderId: order.id,
+            method: PaymentMethod.COD,
+          },
+          {
+            status: PaymentStatus.COMPLETED,
+            paidAt: new Date(),
+          }
+        );
+      }
 
       const log = manager.create(OrderStatusLog, {
         orderId: order.id,
