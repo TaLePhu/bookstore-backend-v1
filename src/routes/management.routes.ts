@@ -35,6 +35,5 @@ router.post(
 router.get('/books', adminBookController.getAllBooks);
 router.get('/books/search', adminBookController.searchBooks);
 router.get('/books/:id', adminBookController.getBookById);
-router.patch('/books/:id/stock', adminBookController.updateBookStock);
 
 export default router;
