@@ -139,6 +139,30 @@ export class AdminBookController {
     }
   };
 
+  updateBookStock = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { id } = req.params;
+
+      if (!isUuid(id)) {
+        throw new AppError('Lỗi: ID không đúng định dạng UUID.', 400);
+      }
+
+      const stock = Number(req.body?.stock);
+      if (!Number.isInteger(stock) || stock < 0) {
+        throw new AppError('Tồn kho phải là số nguyên không âm.', 400);
+      }
+
+      const book = await this.bookService.updateBookStock(id, stock);
+      res.status(200).json({
+        success: true,
+        message: 'Cập nhật tồn kho thành công',
+        data: book,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   deleteBook = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id } = req.params;

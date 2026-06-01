@@ -5,11 +5,13 @@ import { roleGuard } from '@middlewares/role.middleware';
 import { Role } from '@entities/User';
 import { validateDto } from '@middlewares/validate.middleware';
 import { AdminOrderController } from '@controllers/AdminOrderController';
+import { AdminBookController } from '@controllers/AdminBookController';
 import { UpdateOrderStatusDto } from '@dtos/admin/UpdateOrderStatusDto';
 import { RejectCancelRequestDto } from '@dtos/admin/RejectCancelRequestDto';
 
 const router = Router();
 const adminOrderController = container.resolve(AdminOrderController);
+const adminBookController = container.resolve(AdminBookController);
 
 router.use(authMiddleware);
 router.use(roleGuard(Role.ADMIN, Role.STAFF));
@@ -29,5 +31,10 @@ router.post(
   validateDto(RejectCancelRequestDto),
   adminOrderController.rejectCancelRequest
 );
+
+router.get('/books', adminBookController.getAllBooks);
+router.get('/books/search', adminBookController.searchBooks);
+router.get('/books/:id', adminBookController.getBookById);
+router.patch('/books/:id/stock', adminBookController.updateBookStock);
 
 export default router;

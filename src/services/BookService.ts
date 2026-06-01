@@ -1016,6 +1016,24 @@ export class BookService {
 
   }
 
+  async updateBookStock(id: string, stock: number): Promise<any> {
+    if (!Number.isInteger(stock) || stock < 0) {
+      throw new ValidationError('Tồn kho phải là số nguyên không âm');
+    }
+
+    const bookRepo = AppDataSource.getRepository(Book);
+    const book = await bookRepo.findOne({ where: { id } });
+    if (!book) {
+      throw new NotFoundError('Sách không tồn tại');
+    }
+
+    book.stock = stock;
+    await bookRepo.save(book);
+    await this.clearDetailCache(id);
+
+    return this.getBookById(id, true);
+  }
+
   async softDeleteBook(id: string): Promise<void> {
     const bookRepo = AppDataSource.getRepository(Book);
     const book = await bookRepo
