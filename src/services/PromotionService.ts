@@ -39,6 +39,7 @@ type PromotionBanner = {
   image: string;
   startsAt: Date | null;
   endsAt: Date | null;
+  createdAt: Date;
 };
 
 type PromotionProgram = {
@@ -226,6 +227,7 @@ export class PromotionService {
     }));
     const banners = activePrograms
       .filter((promotion) => Boolean(promotion.bannerImageUrl))
+      .slice(0, 4)
       .map((promotion) => ({
         id: promotion.id,
         name: promotion.name,
@@ -234,6 +236,7 @@ export class PromotionService {
         image: promotion.bannerImageUrl!,
         startsAt: promotion.startsAt,
         endsAt: promotion.endsAt,
+        createdAt: promotion.createdAt,
       }));
 
     const categoryGroups = new Map<string, PromotionBook[]>();
