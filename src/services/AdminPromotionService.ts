@@ -79,15 +79,29 @@ export class AdminPromotionService {
     return Array.from(new Set(bookIds.filter(Boolean)));
   }
 
+  private hasOverlap(leftStart: Date | null, leftEnd: Date | null, rightStart: Date | null, rightEnd: Date | null): boolean {
+    const leftStartTime = leftStart?.getTime() ?? Number.NEGATIVE_INFINITY;
+    const leftEndTime = leftEnd?.getTime() ?? Number.POSITIVE_INFINITY;
+    const rightStartTime = rightStart?.getTime() ?? Number.NEGATIVE_INFINITY;
+    const rightEndTime = rightEnd?.getTime() ?? Number.POSITIVE_INFINITY;
+    return leftStartTime <= rightEndTime && rightStartTime <= leftEndTime;
+  }
+
   private async validateBookPromotionConflicts(promotion: Promotion, bookIds: string[]): Promise<void> {
     if (bookIds.length === 0) return;
+    if (promotion.status !== PromotionStatus.ACTIVE) return;
 
     const existingItems = await this.promotionBookRepo.find({
       where: { bookId: In(bookIds) },
+      relations: ['promotion'],
     });
-    const conflicts = existingItems.filter((item) => item.promotionId !== promotion.id);
+    const conflicts = existingItems.filter((item) => {
+      if (item.promotionId === promotion.id) return false;
+      if (!item.promotion || item.promotion.status !== PromotionStatus.ACTIVE) return false;
+      return this.hasOverlap(promotion.startsAt, promotion.endsAt, item.promotion.startsAt, item.promotion.endsAt);
+    });
     if (conflicts.length > 0) {
-      throw new ValidationError('Một số sách đang thuộc chương trình khuyến mãi khác', {
+      throw new ValidationError('Một số sách đã thuộc chương trình khuyến mãi khác có thời gian trùng nhau', {
         bookIds: conflicts.map((item) => item.bookId),
       });
     }
@@ -166,24 +180,30 @@ export class AdminPromotionService {
     const startsAt = this.parseDate(dto.startsAt);
     const endsAt = this.parseDate(dto.endsAt);
     this.validateDateRange(startsAt, endsAt);
-    const uploadedBanner = await uploadImage(bannerImage);
 
     const promotion = this.promotionRepo.create({
       name: dto.name.trim(),
       description: dto.description?.trim() || null,
-      bannerImageUrl: uploadedBanner?.url || dto.bannerImageUrl?.trim() || null,
-      bannerImagePublicId: uploadedBanner?.publicId || null,
+      bannerImageUrl: dto.bannerImageUrl?.trim() || null,
+      bannerImagePublicId: null,
       discountPercent: dto.discountPercent,
       startsAt,
       endsAt,
       status: dto.status || PromotionStatus.ACTIVE,
     });
+    const normalizedBookIds = this.normalizeBookIds(dto.bookIds || []);
+    await this.validateBookPromotionConflicts(promotion, normalizedBookIds);
+    const uploadedBanner = await uploadImage(bannerImage);
+    if (uploadedBanner) {
+      promotion.bannerImageUrl = uploadedBanner.url;
+      promotion.bannerImagePublicId = uploadedBanner.publicId;
+    }
 
     let savedPromotionId: string | null = null;
     try {
       const saved = await this.promotionRepo.save(promotion);
       savedPromotionId = saved.id;
-      await this.syncBooks(saved, dto.bookIds || []);
+      await this.syncBooks(saved, normalizedBookIds);
       return this.getPromotionById(saved.id);
     } catch (error) {
       if (savedPromotionId) {
@@ -221,6 +241,10 @@ export class AdminPromotionService {
     if (dto.endsAt !== undefined) promotion.endsAt = this.parseDate(dto.endsAt);
     if (dto.status) promotion.status = dto.status;
     this.validateDateRange(promotion.startsAt, promotion.endsAt);
+    const nextBookIds = dto.bookIds
+      ? this.normalizeBookIds(dto.bookIds)
+      : (await this.promotionBookRepo.find({ where: { promotionId: id } })).map((item) => item.bookId);
+    await this.validateBookPromotionConflicts(promotion, nextBookIds);
     const uploadedBanner = await uploadImage(bannerImage);
     if (uploadedBanner) {
       promotion.bannerImageUrl = uploadedBanner.url;
@@ -233,10 +257,9 @@ export class AdminPromotionService {
         await deleteCloudinaryImages([oldBannerPublicId]);
       }
       if (dto.bookIds) {
-        await this.syncBooks(saved, dto.bookIds);
+        await this.syncBooks(saved, nextBookIds);
       } else {
-        const currentBookIds = (await this.promotionBookRepo.find({ where: { promotionId: id } })).map((item) => item.bookId);
-        await this.applyPromotionToBooks(saved, currentBookIds);
+        await this.applyPromotionToBooks(saved, nextBookIds);
       }
       return this.getPromotionById(id);
     } catch (error) {
