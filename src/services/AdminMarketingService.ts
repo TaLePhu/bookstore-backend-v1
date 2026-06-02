@@ -9,7 +9,8 @@ import { PromotionBook } from '@entities/PromotionBook';
 import { ValidationError } from '@utils/errors';
 
 type MarketingPriority = 'high' | 'medium' | 'low';
-type MarketingCategory = 'inventory' | 'revenue' | 'customer' | 'alert';
+type MarketingDataQuality = 'starter' | 'enough' | 'rich';
+type MarketingActionType = 'create_promotion' | 'view_books' | 'view_customers' | 'view_orders';
 
 interface GeminiTextResponse {
   candidates?: Array<{
@@ -19,16 +20,55 @@ interface GeminiTextResponse {
   }>;
 }
 
-export interface AdminMarketingInsight {
+interface MarketingContext {
+  books: Book[];
+  orders: Order[];
+  promotions: Promotion[];
+  activePromotionBookIds: Set<string>;
+  completedOrders: Order[];
+  cancelledOrders: Order[];
+  highStockSlowBooks: Book[];
+  highStockBooks: Book[];
+  bestSellersWithoutPromo: Book[];
+  lowStockBooks: Book[];
+  newBooks: Book[];
+  activePromotions: Promotion[];
+  vipCustomerCount: number;
+  cancelRate: number;
+}
+
+export interface AdminMarketingSummary {
+  dataQuality: MarketingDataQuality;
+  totalBooks: number;
+  completedOrders: number;
+  activePromotions: number;
+  highStockBooks: number;
+  bestSellerBooks: number;
+  lowStockBooks: number;
+  newBooks: number;
+  vipCustomers: number;
+  cancelRate: number;
+}
+
+export interface AdminMarketingProgram {
   id: string;
-  category: MarketingCategory;
   title: string;
-  reason: string;
-  impact: string;
+  problem: string;
+  recommendation: string;
+  target: string;
+  discountPercent: number;
+  durationDays: number;
   priority: MarketingPriority;
-  actionType: 'create_promotion' | 'view_books' | 'view_customers' | 'view_orders';
-  suggestedBookIds: string[];
-  metrics: Record<string, number | string>;
+  actionType: MarketingActionType;
+  bookIds: string[];
+  reason: string;
+  expectedImpact: string;
+}
+
+export interface AdminMarketingPlan {
+  summary: AdminMarketingSummary;
+  recommendedPrograms: AdminMarketingProgram[];
+  dataNotes: string[];
 }
 
 export interface AdminMarketingCampaignDraft {
@@ -51,12 +91,48 @@ export class AdminMarketingService {
   private promotionRepo = AppDataSource.getRepository(Promotion);
   private promotionBookRepo = AppDataSource.getRepository(PromotionBook);
 
-  async listInsights(): Promise<AdminMarketingInsight[]> {
+  async listInsights(): Promise<AdminMarketingPlan> {
+    const context = await this.getMarketingContext();
+    const summary = this.buildSummary(context);
+    const recommendedPrograms = this.buildRecommendedPrograms(context);
+    const dataNotes = this.buildDataNotes(summary, recommendedPrograms);
+
+    return {
+      summary,
+      recommendedPrograms,
+      dataNotes,
+    };
+  }
+
+  async generateCampaignDraft(programId: string): Promise<AdminMarketingCampaignDraft> {
+    const plan = await this.listInsights();
+    const program = plan.recommendedPrograms.find((item) => item.id === programId);
+    if (!program) {
+      throw new ValidationError('Chương trình marketing không tồn tại hoặc không còn phù hợp');
+    }
+    if (program.bookIds.length === 0) {
+      throw new ValidationError('Chương trình này chưa có danh sách sách phù hợp để tạo khuyến mãi');
+    }
+
+    const books = await this.bookRepo.find({
+      where: { id: In(program.bookIds) },
+      relations: ['category'],
+    });
+    const orderedBooks = program.bookIds
+      .map((id) => books.find((book) => book.id === id))
+      .filter(Boolean) as Book[];
+    const fallbackDraft = this.buildFallbackDraft(program, orderedBooks);
+    const aiDraft = await this.generateAiDraft(program, orderedBooks, fallbackDraft);
+
+    return aiDraft || fallbackDraft;
+  }
+
+  private async getMarketingContext(): Promise<MarketingContext> {
     const [books, orders, promotions, promotionBooks] = await Promise.all([
       this.bookRepo.find({
         relations: ['category'],
         order: { soldCount: 'DESC' },
-        take: 200,
+        take: 250,
       }),
       this.orderRepo.find({ order: { createdAt: 'DESC' }, take: 500 }),
       this.promotionRepo.find(),
@@ -70,173 +146,295 @@ export class AdminMarketingService {
     );
     const completedOrders = orders.filter((order) => order.status === OrderStatus.COMPLETED);
     const cancelledOrders = orders.filter((order) => order.status === OrderStatus.CANCELLED);
-    const revenue = completedOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
     const cancelRate = orders.length > 0 ? Math.round((cancelledOrders.length / orders.length) * 100) : 0;
     const spentByCustomer = completedOrders.reduce((map, order) => {
       map.set(order.userId, (map.get(order.userId) || 0) + Number(order.totalAmount || 0));
       return map;
     }, new Map<string, number>());
     const vipCustomerCount = [...spentByCustomer.values()].filter((totalSpent) => totalSpent >= 5000000).length;
-
+    const activePromotions = promotions.filter((promotion) => this.isPromotionEffective(promotion));
     const highStockSlowBooks = books
       .filter((book) => Number(book.stock || 0) >= 30 && Number(book.soldCount || 0) <= 5)
+      .sort((left, right) => Number(right.stock || 0) - Number(left.stock || 0));
+    const highStockBooks = books
+      .filter((book) => Number(book.stock || 0) >= 20)
       .sort((left, right) => Number(right.stock || 0) - Number(left.stock || 0));
     const bestSellersWithoutPromo = books
       .filter((book) => Number(book.soldCount || 0) >= 10 && !activePromotionBookIds.has(book.id))
       .sort((left, right) => Number(right.soldCount || 0) - Number(left.soldCount || 0));
-    const lowStockBooks = books.filter((book) => Number(book.stock || 0) <= 5);
-    const activePromotions = promotions.filter((promotion) => this.isPromotionEffective(promotion));
-
-    const insights: Array<AdminMarketingInsight | false> = [
-      highStockSlowBooks.length > 0 && {
-        id: 'inventory-slow-stock',
-        category: 'inventory',
-        title: `${highStockSlowBooks.length} sách tồn cao, bán chậm`,
-        reason: `Tồn kho cao nhưng lượt bán thấp. Nên ưu tiên "${highStockSlowBooks[0].title}".`,
-        impact: 'Giảm tồn kho, giải phóng vốn và tạo thêm lưu lượng truy cập cho nhóm sách ít được chú ý.',
-        priority: 'high',
-        actionType: 'create_promotion',
-        suggestedBookIds: highStockSlowBooks.slice(0, 12).map((book) => book.id),
-        metrics: {
-          bookCount: highStockSlowBooks.length,
-          topStock: Number(highStockSlowBooks[0].stock || 0),
-        },
-      },
-      bestSellersWithoutPromo.length > 0 && {
-        id: 'revenue-bestseller-banner',
-        category: 'revenue',
-        title: `${bestSellersWithoutPromo.length} sách bán chạy nên đưa lên chiến dịch`,
-        reason: `"${bestSellersWithoutPromo[0].title}" đang có ${Number(bestSellersWithoutPromo[0].soldCount || 0).toLocaleString('vi-VN')} lượt bán.`,
-        impact: 'Tăng tỷ lệ click và tận dụng nhu cầu sẵn có từ nhóm sách đang bán tốt.',
-        priority: 'medium',
-        actionType: 'create_promotion',
-        suggestedBookIds: bestSellersWithoutPromo.slice(0, 8).map((book) => book.id),
-        metrics: {
-          bookCount: bestSellersWithoutPromo.length,
-          topSoldCount: Number(bestSellersWithoutPromo[0].soldCount || 0),
-        },
-      },
-      vipCustomerCount > 0 && {
-        id: 'customer-vip-care',
-        category: 'customer',
-        title: 'Có khách VIP nên chăm sóc riêng',
-        reason: 'Một nhóm khách hàng có tổng chi tiêu cao, phù hợp với ưu đãi riêng hoặc quyền lợi thành viên.',
-        impact: 'Tăng mua lặp lại và giữ chân khách hàng giá trị cao.',
-        priority: 'high',
-        actionType: 'view_customers',
-        suggestedBookIds: bestSellersWithoutPromo.slice(0, 6).map((book) => book.id),
-        metrics: {
-          customerCount: vipCustomerCount,
-        },
-      },
-      cancelRate >= 15 && {
-        id: 'alert-cancel-rate',
-        category: 'alert',
-        title: `Tỷ lệ hủy đơn đang cao: ${cancelRate}%`,
-        reason: `${cancelledOrders.length}/${orders.length} đơn trong tập báo cáo bị hủy.`,
-        impact: 'Cần xem lại xác nhận đơn, tồn kho, phí ship hoặc phương thức thanh toán trước khi đẩy chiến dịch lớn.',
-        priority: 'high',
-        actionType: 'view_orders',
-        suggestedBookIds: [],
-        metrics: {
-          cancelRate,
-          cancelledOrders: cancelledOrders.length,
-          totalOrders: orders.length,
-        },
-      },
-      revenue === 0 && orders.length > 0 && {
-        id: 'alert-no-completed-revenue',
-        category: 'alert',
-        title: 'Chưa có doanh thu hoàn thành',
-        reason: 'Có đơn hàng nhưng chưa có đơn ở trạng thái hoàn thành.',
-        impact: 'Nên ưu tiên xử lý đơn đang chờ trước khi mở thêm chiến dịch marketing.',
-        priority: 'high',
-        actionType: 'view_orders',
-        suggestedBookIds: [],
-        metrics: {
-          totalOrders: orders.length,
-        },
-      },
-      lowStockBooks.length > 0 && {
-        id: 'inventory-low-stock',
-        category: 'inventory',
-        title: 'Có sách sắp hết hàng',
-        reason: 'Một số sách tồn kho rất thấp, không nên đẩy khuyến mãi mạnh.',
-        impact: 'Tránh bán vượt tồn và giữ trải nghiệm khách hàng.',
-        priority: 'low',
-        actionType: 'view_books',
-        suggestedBookIds: lowStockBooks.slice(0, 10).map((book) => book.id),
-        metrics: {
-          bookCount: lowStockBooks.length,
-        },
-      },
-      activePromotions.length === 0 && books.length > 0 && {
-        id: 'revenue-no-active-promotion',
-        category: 'revenue',
-        title: 'Chưa có chương trình khuyến mãi đang chạy',
-        reason: 'Không có chương trình khuyến mãi hiệu lực trong thời điểm hiện tại.',
-        impact: 'Có thể tạo một chiến dịch ngắn hạn để tăng lượt xem và kích hoạt nhu cầu mua.',
-        priority: 'medium',
-        actionType: 'create_promotion',
-        suggestedBookIds: books.slice(0, 8).map((book) => book.id),
-        metrics: {
-          bookCount: books.length,
-        },
-      },
-    ];
-
-    return insights.filter(Boolean) as AdminMarketingInsight[];
-  }
-
-  async generateCampaignDraft(insightId: string): Promise<AdminMarketingCampaignDraft> {
-    const insights = await this.listInsights();
-    const insight = insights.find((item) => item.id === insightId);
-    if (!insight) {
-      throw new ValidationError('Gợi ý marketing không tồn tại hoặc không còn phù hợp');
-    }
-    if (insight.suggestedBookIds.length === 0) {
-      throw new ValidationError('Gợi ý này chưa có danh sách sách phù hợp để tạo khuyến mãi');
-    }
-
-    const books = await this.bookRepo.find({
-      where: { id: In(insight.suggestedBookIds) },
-      relations: ['category'],
-    });
-    const orderedBooks = insight.suggestedBookIds
-      .map((id) => books.find((book) => book.id === id))
-      .filter(Boolean) as Book[];
-    const fallbackDraft = this.buildFallbackDraft(insight, orderedBooks);
-    const aiDraft = await this.generateAiDraft(insight, orderedBooks, fallbackDraft);
-
-    return aiDraft || fallbackDraft;
-  }
-
-  private buildFallbackDraft(insight: AdminMarketingInsight, books: Book[]): AdminMarketingCampaignDraft {
-    const today = new Date();
-    const endsAt = new Date(today);
-    endsAt.setDate(today.getDate() + 14);
-    const mainCategory = books[0]?.category?.name || 'sách hay';
-    const isInventoryCampaign = insight.id.startsWith('inventory');
-    const discountPercent = isInventoryCampaign ? 20 : 12;
+    const lowStockBooks = books.filter((book) => Number(book.stock || 0) > 0 && Number(book.stock || 0) <= 5);
+    const now = Date.now();
+    const newBooks = books
+      .filter((book) => {
+        const releaseTime = book.releaseDate ? new Date(book.releaseDate).getTime() : 0;
+        const createdTime = book.createdAt ? new Date(book.createdAt).getTime() : 0;
+        const signalTime = Math.max(releaseTime, createdTime);
+        return signalTime > 0 && (now - signalTime) / 86400000 <= 60 && Number(book.stock || 0) > 0;
+      })
+      .sort((left, right) => {
+        const leftTime = Math.max(left.releaseDate ? new Date(left.releaseDate).getTime() : 0, left.createdAt ? new Date(left.createdAt).getTime() : 0);
+        const rightTime = Math.max(right.releaseDate ? new Date(right.releaseDate).getTime() : 0, right.createdAt ? new Date(right.createdAt).getTime() : 0);
+        return rightTime - leftTime;
+      });
 
     return {
-      insightId: insight.id,
-      name: isInventoryCampaign ? `Ưu đãi xả kho ${mainCategory}` : `Ưu đãi sách bán chạy`,
-      description: isInventoryCampaign
-        ? `Chọn lọc các đầu sách còn nhiều tồn kho với mức giá tốt hơn trong thời gian ngắn.`
-        : `Tập hợp những đầu sách đang được quan tâm để khách hàng dễ chọn mua hơn.`,
-      discountPercent,
+      books,
+      orders,
+      promotions,
+      activePromotionBookIds,
+      completedOrders,
+      cancelledOrders,
+      highStockSlowBooks,
+      highStockBooks,
+      bestSellersWithoutPromo,
+      lowStockBooks,
+      newBooks,
+      activePromotions,
+      vipCustomerCount,
+      cancelRate,
+    };
+  }
+
+  private buildSummary(context: MarketingContext): AdminMarketingSummary {
+    const totalSignals =
+      context.completedOrders.length +
+      context.activePromotions.length +
+      context.bestSellersWithoutPromo.length +
+      context.vipCustomerCount;
+    const dataQuality: MarketingDataQuality =
+      context.completedOrders.length >= 30 && totalSignals >= 8
+        ? 'rich'
+        : context.completedOrders.length >= 5 || totalSignals >= 3
+        ? 'enough'
+        : 'starter';
+
+    return {
+      dataQuality,
+      totalBooks: context.books.length,
+      completedOrders: context.completedOrders.length,
+      activePromotions: context.activePromotions.length,
+      highStockBooks: context.highStockBooks.length,
+      bestSellerBooks: context.bestSellersWithoutPromo.length,
+      lowStockBooks: context.lowStockBooks.length,
+      newBooks: context.newBooks.length,
+      vipCustomers: context.vipCustomerCount,
+      cancelRate: context.cancelRate,
+    };
+  }
+
+  private buildRecommendedPrograms(context: MarketingContext): AdminMarketingProgram[] {
+    const programs: AdminMarketingProgram[] = [];
+    const starterBooks = this.pickStarterBooks(context);
+
+    if (context.completedOrders.length < 5 && starterBooks.length > 0) {
+      programs.push({
+        id: 'revenue-starter-campaign',
+        title: 'Chiến dịch khởi động doanh thu',
+        problem: 'Dữ liệu đơn hoàn thành còn ít nên chưa đủ tín hiệu để tối ưu sâu theo doanh thu.',
+        recommendation: 'Chạy một chương trình ngắn với nhóm sách còn hàng, dễ mua và có giá vừa phải để tạo đơn hàng đầu tiên.',
+        target: `${starterBooks.length} sách còn hàng, ưu tiên giá dễ tiếp cận`,
+        discountPercent: 12,
+        durationDays: 10,
+        priority: 'high',
+        actionType: 'create_promotion',
+        bookIds: starterBooks.map((book) => book.id),
+        reason: 'Phù hợp giai đoạn khởi động vì không cần lịch sử bán hàng dày vẫn có thể tạo nhu cầu mua thử.',
+        expectedImpact: 'Tăng lượt mua ban đầu và tạo dữ liệu thật cho các phân tích marketing sau.',
+      });
+    }
+
+    if (context.highStockSlowBooks.length > 0) {
+      programs.push({
+        id: 'inventory-smart-clearance',
+        title: 'Chiến dịch xả tồn kho thông minh',
+        problem: `${context.highStockSlowBooks.length} sách tồn cao nhưng bán chậm.`,
+        recommendation: 'Tạo ưu đãi có thời hạn cho nhóm tồn kho cao, tránh áp dụng cho sách sắp hết hàng.',
+        target: `${Math.min(12, context.highStockSlowBooks.length)} sách tồn cao bán chậm`,
+        discountPercent: 20,
+        durationDays: 14,
+        priority: 'high',
+        actionType: 'create_promotion',
+        bookIds: context.highStockSlowBooks.slice(0, 12).map((book) => book.id),
+        reason: `Sách ưu tiên: "${context.highStockSlowBooks[0].title}" đang có tồn kho cao và lượt bán thấp.`,
+        expectedImpact: 'Giảm tồn, giải phóng vốn và tăng hiển thị cho nhóm sách ít được chú ý.',
+      });
+    } else if (context.highStockBooks.length > 0) {
+      programs.push({
+        id: 'inventory-stock-balance',
+        title: 'Chiến dịch cân bằng tồn kho',
+        problem: 'Có nhóm sách tồn kho cao nhưng chưa đủ tín hiệu bán chậm rõ ràng.',
+        recommendation: 'Chạy ưu đãi nhẹ cho nhóm tồn nhiều để kiểm tra nhu cầu trước khi giảm sâu.',
+        target: `${Math.min(10, context.highStockBooks.length)} sách tồn kho cao`,
+        discountPercent: 10,
+        durationDays: 10,
+        priority: 'medium',
+        actionType: 'create_promotion',
+        bookIds: context.highStockBooks.slice(0, 10).map((book) => book.id),
+        reason: 'Đây là bước thử thị trường hợp lý khi dữ liệu bán chưa đủ dày.',
+        expectedImpact: 'Giúp phát hiện nhóm sách còn có nhu cầu trước khi quyết định xả tồn mạnh.',
+      });
+    }
+
+    if (context.bestSellersWithoutPromo.length > 0) {
+      programs.push({
+        id: 'revenue-bestseller-boost',
+        title: 'Chiến dịch sách bán chạy',
+        problem: `${context.bestSellersWithoutPromo.length} sách bán tốt chưa nằm trong khuyến mãi đang chạy.`,
+        recommendation: 'Đưa sách bán chạy lên chiến dịch/bảng nổi bật với mức giảm nhẹ, ưu tiên hiển thị hơn giảm sâu.',
+        target: `${Math.min(8, context.bestSellersWithoutPromo.length)} sách bán chạy`,
+        discountPercent: 8,
+        durationDays: 7,
+        priority: 'medium',
+        actionType: 'create_promotion',
+        bookIds: context.bestSellersWithoutPromo.slice(0, 8).map((book) => book.id),
+        reason: `"${context.bestSellersWithoutPromo[0].title}" đang có ${Number(context.bestSellersWithoutPromo[0].soldCount || 0).toLocaleString('vi-VN')} lượt bán.`,
+        expectedImpact: 'Tận dụng nhu cầu sẵn có để tăng chuyển đổi mà không làm giảm biên lợi nhuận quá mạnh.',
+      });
+    }
+
+    if (context.newBooks.length > 0) {
+      programs.push({
+        id: 'revenue-new-arrivals',
+        title: 'Chiến dịch sách mới',
+        problem: 'Sách mới cần được đẩy hiển thị sớm để tạo nhận diện và lượt xem.',
+        recommendation: 'Tạo chương trình ra mắt sách mới với mức giảm nhẹ hoặc chỉ dùng banner nổi bật.',
+        target: `${Math.min(8, context.newBooks.length)} sách mới/cập nhật gần đây`,
+        discountPercent: 7,
+        durationDays: 10,
+        priority: context.completedOrders.length < 5 ? 'medium' : 'low',
+        actionType: 'create_promotion',
+        bookIds: context.newBooks.slice(0, 8).map((book) => book.id),
+        reason: 'Sách mới thường cần tín hiệu hiển thị ban đầu trước khi có dữ liệu bán hàng ổn định.',
+        expectedImpact: 'Tăng lượt xem cho sách mới và tạo dữ liệu để quyết định nhập/thúc đẩy tiếp.',
+      });
+    }
+
+    if (context.activePromotions.length === 0 && starterBooks.length > 0 && !programs.some((item) => item.id === 'revenue-starter-campaign')) {
+      programs.push({
+        id: 'promotion-first-active',
+        title: 'Tạo chương trình khuyến mãi đang chạy',
+        problem: 'Hiện chưa có chương trình khuyến mãi hiệu lực.',
+        recommendation: 'Tạo một chương trình ngắn để trang khuyến mãi và banner có nội dung hoạt động.',
+        target: `${starterBooks.length} sách còn hàng`,
+        discountPercent: 10,
+        durationDays: 10,
+        priority: 'medium',
+        actionType: 'create_promotion',
+        bookIds: starterBooks.map((book) => book.id),
+        reason: 'Một chương trình đang chạy giúp admin kiểm tra luồng khuyến mãi và tạo điểm nhấn cho khách hàng.',
+        expectedImpact: 'Tăng tín hiệu mua thử và giảm cảm giác trang khuyến mãi trống.',
+      });
+    }
+
+    if (context.vipCustomerCount > 0) {
+      programs.push({
+        id: 'customer-vip-care',
+        title: 'Chăm sóc khách VIP',
+        problem: `Có ${context.vipCustomerCount} khách hàng chi tiêu cao.`,
+        recommendation: 'Chuẩn bị ưu đãi riêng hoặc gọi chăm sóc, không nên giảm đại trà giống chiến dịch xả tồn.',
+        target: 'Khách hàng có tổng chi tiêu cao',
+        discountPercent: 10,
+        durationDays: 14,
+        priority: 'medium',
+        actionType: 'view_customers',
+        bookIds: context.bestSellersWithoutPromo.slice(0, 6).map((book) => book.id),
+        reason: 'Nhóm khách này phù hợp với quyền lợi riêng, gợi ý sách chọn lọc hoặc mã tri ân.',
+        expectedImpact: 'Tăng mua lặp lại và giữ chân khách hàng có giá trị cao.',
+      });
+    }
+
+    if (context.cancelRate >= 15) {
+      programs.unshift({
+        id: 'operation-cancel-rate',
+        title: 'Ổn định vận hành trước khi chạy chiến dịch lớn',
+        problem: `Tỷ lệ hủy đơn đang cao: ${context.cancelRate}%.`,
+        recommendation: 'Kiểm tra quy trình xác nhận đơn, tồn kho, phí ship và phương thức thanh toán trước khi đẩy sale mạnh.',
+        target: 'Đơn hàng bị hủy và đơn đang xử lý',
+        discountPercent: 0,
+        durationDays: 0,
+        priority: 'high',
+        actionType: 'view_orders',
+        bookIds: [],
+        reason: `${context.cancelledOrders.length}/${context.orders.length} đơn trong tập báo cáo bị hủy.`,
+        expectedImpact: 'Giảm rủi ro chạy marketing tạo đơn nhưng không chuyển thành doanh thu thật.',
+      });
+    }
+
+    if (context.lowStockBooks.length > 0) {
+      programs.push({
+        id: 'inventory-low-stock-guard',
+        title: 'Không giảm sâu sách sắp hết hàng',
+        problem: `${context.lowStockBooks.length} sách còn tồn rất thấp.`,
+        recommendation: 'Rà soát nhóm này trước khi thêm vào khuyến mãi, ưu tiên nhập thêm hoặc tắt giảm giá sâu.',
+        target: 'Sách tồn thấp',
+        discountPercent: 0,
+        durationDays: 0,
+        priority: 'low',
+        actionType: 'view_books',
+        bookIds: context.lowStockBooks.slice(0, 10).map((book) => book.id),
+        reason: 'Giảm giá mạnh cho sách tồn thấp dễ gây bán vượt tồn và trải nghiệm giao hàng kém.',
+        expectedImpact: 'Bảo vệ tồn kho và giữ trải nghiệm khách hàng ổn định.',
+      });
+    }
+
+    return programs.sort((left, right) => this.getPriorityScore(right.priority) - this.getPriorityScore(left.priority)).slice(0, 8);
+  }
+
+  private pickStarterBooks(context: MarketingContext): Book[] {
+    const activeBookIds = context.activePromotionBookIds;
+    return context.books
+      .filter((book) => Number(book.stock || 0) > 5 && !activeBookIds.has(book.id))
+      .sort((left, right) => {
+        const leftPrice = Number(left.price || left.originalPrice || 0);
+        const rightPrice = Number(right.price || right.originalPrice || 0);
+        const leftScore = Number(left.soldCount || 0) * 3 + Math.max(0, 250000 - leftPrice) / 10000;
+        const rightScore = Number(right.soldCount || 0) * 3 + Math.max(0, 250000 - rightPrice) / 10000;
+        return rightScore - leftScore;
+      })
+      .slice(0, 10);
+  }
+
+  private buildDataNotes(summary: AdminMarketingSummary, programs: AdminMarketingProgram[]): string[] {
+    const notes: string[] = [];
+    if (summary.dataQuality === 'starter') {
+      notes.push('Dữ liệu bán hàng còn ở giai đoạn khởi động, hệ thống ưu tiên đề xuất chương trình tạo đơn và kiểm tra nhu cầu.');
+    }
+    if (summary.completedOrders === 0) {
+      notes.push('Chưa có đơn hoàn thành nên chưa thể đo hiệu quả doanh thu theo chiến dịch.');
+    }
+    if (summary.bestSellerBooks === 0) {
+      notes.push('Chưa có đủ tín hiệu sách bán chạy, các đề xuất sẽ dựa nhiều hơn vào tồn kho và danh mục sách.');
+    }
+    if (summary.activePromotions === 0) {
+      notes.push('Chưa có khuyến mãi đang chạy, nên tạo một chương trình ngắn để kích hoạt trang khuyến mãi.');
+    }
+    if (programs.length === 0) {
+      notes.push('Chưa có sách phù hợp để tạo chương trình tự động. Hãy kiểm tra tồn kho và dữ liệu sách trước.');
+    }
+    return notes;
+  }
+
+  private buildFallbackDraft(program: AdminMarketingProgram, books: Book[]): AdminMarketingCampaignDraft {
+    const today = new Date();
+    const endsAt = new Date(today);
+    endsAt.setDate(today.getDate() + Math.max(7, program.durationDays || 10));
+
+    return {
+      insightId: program.id,
+      name: program.title,
+      description: program.recommendation,
+      discountPercent: program.discountPercent || 10,
       startsAt: this.formatDateInput(today),
       endsAt: this.formatDateInput(endsAt),
       status: PromotionStatus.ACTIVE,
       bookIds: books.slice(0, 12).map((book) => book.id),
-      bannerImageUrl: this.getBannerImageUrl(insight.id),
+      bannerImageUrl: this.getBannerImageUrl(program.id),
       aiGenerated: false,
     };
   }
 
   private async generateAiDraft(
-    insight: AdminMarketingInsight,
+    program: AdminMarketingProgram,
     books: Book[],
     fallbackDraft: AdminMarketingCampaignDraft
   ): Promise<AdminMarketingCampaignDraft | null> {
@@ -278,12 +476,15 @@ export class AdminMarketingService {
                 {
                   text: [
                     'Bạn là chuyên viên marketing cho nhà sách Việt Nam.',
-                    'Hãy tạo bản nháp chương trình khuyến mãi dựa trên insight và danh sách sách có sẵn.',
-                    'Không được bịa id sách. Chỉ dùng bookIds trong danh sách.',
+                    'Hãy tạo bản nháp chương trình khuyến mãi dựa trên vấn đề kinh doanh và danh sách sách có sẵn.',
+                    'Không được bịa id sách. Không cần trả bookIds.',
                     'Tên ngắn, dễ dùng làm banner. Mô tả tối đa 2 câu, tự nhiên, không phóng đại.',
-                    'discountPercent phải từ 5 đến 30. Nếu là xả tồn kho, ưu tiên 15-25. Nếu là bestseller, ưu tiên 8-15.',
+                    'discountPercent phải từ 5 đến 30. Nếu chương trình đề xuất giảm 0 thì vẫn chọn 5-10 cho bản nháp khuyến mãi.',
                     'Trả về JSON thuần theo schema: {"name":"...","description":"...","discountPercent":15}',
-                    `Insight: ${insight.title}. Lý do: ${insight.reason}. Tác động: ${insight.impact}.`,
+                    `Chương trình: ${program.title}`,
+                    `Vấn đề: ${program.problem}`,
+                    `Hướng làm: ${program.recommendation}`,
+                    `Mục tiêu: ${program.target}`,
                     `Sách:\n${bookContext}`,
                   ].join('\n'),
                 },
@@ -335,7 +536,7 @@ export class AdminMarketingService {
   }
 
   private clampDiscount(value: number, fallback: number): number {
-    if (!Number.isFinite(value)) return fallback;
+    if (!Number.isFinite(value)) return fallback || 10;
     return Math.min(30, Math.max(5, Math.round(value)));
   }
 
@@ -356,9 +557,16 @@ export class AdminMarketingService {
     return date.toISOString().slice(0, 10);
   }
 
-  private getBannerImageUrl(insightId: string): string {
-    if (insightId.startsWith('inventory')) {
+  private getPriorityScore(priority: MarketingPriority): number {
+    return { high: 3, medium: 2, low: 1 }[priority];
+  }
+
+  private getBannerImageUrl(programId: string): string {
+    if (programId.includes('inventory')) {
       return 'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?q=80&w=1440';
+    }
+    if (programId.includes('new')) {
+      return 'https://images.unsplash.com/photo-1495446815901-a7297e633e8d?q=80&w=1440';
     }
 
     return 'https://images.unsplash.com/photo-1512820790803-83ca734da794?q=80&w=1440';
