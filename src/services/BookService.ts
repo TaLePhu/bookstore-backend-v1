@@ -61,6 +61,7 @@ interface ImportBookInput {
   language?: string;
   releaseDate?: string;
   imageUrl?: string;
+  imageUrls?: string[];
 }
 
 interface ImportBookResult {
@@ -927,7 +928,18 @@ export class BookService {
       const stock = Number(item.stock);
       const publishYear = item.publishYear ? Number(item.publishYear) : undefined;
       const pages = item.pages ? Number(item.pages) : undefined;
-      const imageUrl = String(item.imageUrl || '').trim() || this.defaultImportImageUrl;
+      const imageUrls = [
+        ...(Array.isArray(item.imageUrls) ? item.imageUrls : []),
+        item.imageUrl,
+      ]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+        .slice(0, 5);
+      const imagePayload = (imageUrls.length > 0 ? imageUrls : [this.defaultImportImageUrl]).map((url, imageIndex) => ({
+        url,
+        publicId: null,
+        isPrimary: imageIndex === 0,
+      }));
 
       const addError = (message: string) => {
         result.skipped += 1;
@@ -1000,12 +1012,14 @@ export class BookService {
           });
           const saved = await transactionalBookRepo.save(book);
           await transactionalImageRepo.save(
-            transactionalImageRepo.create({
-              bookId: saved.id,
-              url: imageUrl,
-              publicId: null,
-              isPrimary: true,
-            })
+            imagePayload.map((image) =>
+              transactionalImageRepo.create({
+                bookId: saved.id,
+                url: image.url,
+                publicId: image.publicId,
+                isPrimary: image.isPrimary,
+              })
+            )
           );
           return saved;
         });
