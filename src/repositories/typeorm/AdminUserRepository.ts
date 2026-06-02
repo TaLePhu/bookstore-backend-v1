@@ -160,9 +160,8 @@ export class AdminUserRepository implements IAdminUserRepository {
     const orderRepo = AppDataSource.getRepository(Order);
     const recentOrders = await orderRepo.find({
       where: { userId: id },
-      relations: ['payments'],
+      relations: ['payments', 'items', 'items.book'],
       order: { createdAt: 'DESC' },
-      take: 8,
     });
 
     return {
@@ -190,6 +189,20 @@ export class AdminUserRepository implements IAdminUserRepository {
           paymentMethod: payment?.method ?? null,
           paymentStatus: payment?.status ?? null,
           createdAt: order.createdAt,
+          items: (order.items || []).map((item) => ({
+            id: item.id,
+            quantity: Number(item.quantity || 0),
+            price: Number(item.price || 0),
+            subTotal: Number(item.subTotal || 0),
+            book: item.book
+              ? {
+                  id: item.book.id,
+                  title: item.book.title,
+                  author: item.book.author,
+                  isbn: item.book.isbn,
+                }
+              : null,
+          })),
         };
       }),
     };

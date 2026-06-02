@@ -47,6 +47,18 @@ export interface CustomerSummary {
     paymentMethod: string | null;
     paymentStatus: string | null;
     createdAt: Date;
+    items: Array<{
+      id: string;
+      quantity: number;
+      price: number;
+      subTotal: number;
+      book: {
+        id: string;
+        title: string;
+        author: string;
+        isbn: string;
+      } | null;
+    }>;
   }>;
 }
 
