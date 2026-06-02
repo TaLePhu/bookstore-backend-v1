@@ -146,7 +146,6 @@ export class AdminUserRepository implements IAdminUserRepository {
         'totalSpent'
       )
       .addSelect('MAX(order_entity.createdAt)', 'lastOrderAt')
-      .addSelect('user.admin_note', 'adminNote')
       .where('user.id = :id', { id })
       .setParameter('completedStatus', OrderStatus.COMPLETED)
       .groupBy('user.id')
@@ -157,6 +156,7 @@ export class AdminUserRepository implements IAdminUserRepository {
 
     const user = result.entities[0];
     const raw  = result.raw[0];
+    const adminNote = await this.getAdminNoteSafely(id);
     const orderRepo = AppDataSource.getRepository(Order);
     const recentOrders = await orderRepo.find({
       where: { userId: id },
@@ -176,7 +176,7 @@ export class AdminUserRepository implements IAdminUserRepository {
       phone:        user.userAdvance?.phone   ?? null,
       avatar:       user.userAdvance?.avatar  ?? null,
       createdAt:    user.createdAt,
-      adminNote:    raw.adminNote ?? null,
+      adminNote,
       totalOrders:  parseInt(raw.totalOrders ?? '0', 10),
       totalSpent:   parseFloat(raw.totalSpent ?? '0'),
       lastOrderAt:  raw.lastOrderAt ?? null,
@@ -199,8 +199,22 @@ export class AdminUserRepository implements IAdminUserRepository {
     const user = await this.repository.findOne({ where: { id } });
     if (!user) return null;
 
+    await this.ensureAdminNoteColumn();
     await AppDataSource.query('UPDATE "users" SET "admin_note" = $1 WHERE "id" = $2', [note, id]);
     return this.getCustomerSummary(id);
+  }
+
+  private async ensureAdminNoteColumn(): Promise<void> {
+    await AppDataSource.query('ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "admin_note" text');
+  }
+
+  private async getAdminNoteSafely(id: string): Promise<string | null> {
+    try {
+      const rows = await AppDataSource.query('SELECT "admin_note" FROM "users" WHERE "id" = $1 LIMIT 1', [id]);
+      return rows?.[0]?.admin_note ?? null;
+    } catch {
+      return null;
+    }
   }
 
   private async attachOrderStats(users: User[]): Promise<AdminUserWithStats[]> {
