@@ -144,6 +144,7 @@ export class AdminUserRepository implements IAdminUserRepository {
         'totalSpent'
       )
       .addSelect('MAX(order_entity.createdAt)', 'lastOrderAt')
+      .addSelect('user.admin_note', 'adminNote')
       .where('user.id = :id', { id })
       .setParameter('completedStatus', OrderStatus.COMPLETED)
       .groupBy('user.id')
@@ -173,7 +174,7 @@ export class AdminUserRepository implements IAdminUserRepository {
       phone:        user.userAdvance?.phone   ?? null,
       avatar:       user.userAdvance?.avatar  ?? null,
       createdAt:    user.createdAt,
-      adminNote:    user.adminNote ?? null,
+      adminNote:    raw.adminNote ?? null,
       totalOrders:  parseInt(raw.totalOrders ?? '0', 10),
       totalSpent:   parseFloat(raw.totalSpent ?? '0'),
       lastOrderAt:  raw.lastOrderAt ?? null,
@@ -196,8 +197,7 @@ export class AdminUserRepository implements IAdminUserRepository {
     const user = await this.repository.findOne({ where: { id } });
     if (!user) return null;
 
-    user.adminNote = note;
-    await this.repository.save(user);
+    await AppDataSource.query('UPDATE "users" SET "admin_note" = $1 WHERE "id" = $2', [note, id]);
     return this.getCustomerSummary(id);
   }
 }
