@@ -41,7 +41,7 @@ export class AdminPromotionController {
     try {
       const status = req.body?.status as PromotionStatus;
       const promotion = await this.adminPromotionService.updatePromotionStatus(req.params.id, status);
-      sendSuccess(res, promotion, 'Cáº­p nháº­t tráº¡ng thÃ¡i chÆ°Æ¡ng trÃ¬nh khuyáº¿n mÃ£i thÃ nh cÃ´ng');
+      sendSuccess(res, promotion, 'Cập nhật trạng thái chương trình khuyến mãi thành công');
     } catch (error) {
       next(error);
     }

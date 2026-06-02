@@ -156,7 +156,7 @@ export class AdminPromotionService {
       const foundIds = new Set(books.map((book) => book.id));
       const missingIds = normalizedBookIds.filter((id) => !foundIds.has(id));
       if (missingIds.length > 0) {
-        throw new ValidationError('Má»™t sá»‘ sÃ¡ch khÃ´ng tá»“n táº¡i', { bookIds: missingIds });
+        throw new ValidationError('Một số sách không tồn tại', { bookIds: missingIds });
       }
     }
 
@@ -317,11 +317,11 @@ export class AdminPromotionService {
 
   async updatePromotionStatus(id: string, status: PromotionStatus) {
     if (!Object.values(PromotionStatus).includes(status)) {
-      throw new ValidationError('Tráº¡ng thÃ¡i chÆ°Æ¡ng trÃ¬nh khuyáº¿n mÃ£i khÃ´ng há»£p lá»‡');
+      throw new ValidationError('Trạng thái chương trình khuyến mãi không hợp lệ');
     }
 
     const promotion = await this.promotionRepo.findOne({ where: { id }, relations: ['promotionBooks'] });
-    if (!promotion) throw new NotFoundError('ChÆ°Æ¡ng trÃ¬nh khuyáº¿n mÃ£i khÃ´ng tá»“n táº¡i');
+    if (!promotion) throw new NotFoundError('Chương trình khuyến mãi không tồn tại');
 
     promotion.status = status;
     const bookIds = (promotion.promotionBooks || []).map((item) => item.bookId);
