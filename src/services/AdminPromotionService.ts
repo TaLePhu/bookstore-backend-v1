@@ -151,20 +151,68 @@ export class AdminPromotionService {
   private async syncBooks(promotion: Promotion, bookIds: string[] = []): Promise<void> {
     const normalizedBookIds = this.normalizeBookIds(bookIds);
     await this.validateBookPromotionConflicts(promotion, normalizedBookIds);
-    const existingBookIds = (await this.promotionBookRepo.find({ where: { promotionId: promotion.id } })).map(
-      (item) => item.bookId
-    );
-    const nextBookIds = new Set(normalizedBookIds);
-    const removedBookIds = existingBookIds.filter((bookId) => !nextBookIds.has(bookId));
+    if (normalizedBookIds.length > 0) {
+      const books = await this.bookRepo.find({ where: { id: In(normalizedBookIds) } });
+      const foundIds = new Set(books.map((book) => book.id));
+      const missingIds = normalizedBookIds.filter((id) => !foundIds.has(id));
+      if (missingIds.length > 0) {
+        throw new ValidationError('Má»™t sá»‘ sÃ¡ch khÃ´ng tá»“n táº¡i', { bookIds: missingIds });
+      }
+    }
 
     await this.promotionBookRepo.delete({ promotionId: promotion.id });
-    await this.restoreBooks(removedBookIds);
 
     if (normalizedBookIds.length > 0) {
-      await this.applyPromotionToBooks(promotion, normalizedBookIds);
       await this.promotionBookRepo.save(
         normalizedBookIds.map((bookId) => this.promotionBookRepo.create({ promotionId: promotion.id, bookId }))
       );
+    }
+    await this.syncPromotionEffects();
+  }
+
+  async syncPromotionEffects(): Promise<void> {
+    const promotionItems = await this.promotionBookRepo.find({
+      relations: ['promotion', 'book'],
+    });
+    const itemsByBookId = new Map<string, PromotionBook[]>();
+
+    promotionItems.forEach((item) => {
+      if (!item.book || !item.promotion) return;
+      const items = itemsByBookId.get(item.bookId) || [];
+      items.push(item);
+      itemsByBookId.set(item.bookId, items);
+    });
+
+    const booksToSave: Book[] = [];
+    itemsByBookId.forEach((items) => {
+      const book = items[0]?.book;
+      if (!book) return;
+
+      const activeItem = items
+        .filter((item) => this.isPromotionEffective(item.promotion))
+        .sort((left, right) => {
+          const leftCreatedAt = left.promotion.createdAt ? new Date(left.promotion.createdAt).getTime() : 0;
+          const rightCreatedAt = right.promotion.createdAt ? new Date(right.promotion.createdAt).getTime() : 0;
+          return rightCreatedAt - leftCreatedAt;
+        })[0];
+      const currentPrice = Number(book.price || 0);
+      const originalPrice = Number(book.originalPrice || currentPrice) || currentPrice;
+      const basePrice = originalPrice > 0 ? originalPrice : currentPrice;
+
+      if (activeItem?.promotion) {
+        book.originalPrice = basePrice;
+        book.price = Math.round((basePrice * (100 - activeItem.promotion.discountPercent)) / 100);
+        book.discount = activeItem.promotion.discountPercent;
+      } else {
+        book.price = basePrice;
+        book.discount = 0;
+      }
+
+      booksToSave.push(book);
+    });
+
+    if (booksToSave.length > 0) {
+      await this.bookRepo.save(booksToSave);
     }
   }
 
@@ -259,12 +307,28 @@ export class AdminPromotionService {
       if (dto.bookIds) {
         await this.syncBooks(saved, nextBookIds);
       } else {
-        await this.applyPromotionToBooks(saved, nextBookIds);
+        await this.syncPromotionEffects();
       }
       return this.getPromotionById(id);
     } catch (error) {
       throw error;
     }
+  }
+
+  async updatePromotionStatus(id: string, status: PromotionStatus) {
+    if (!Object.values(PromotionStatus).includes(status)) {
+      throw new ValidationError('Tráº¡ng thÃ¡i chÆ°Æ¡ng trÃ¬nh khuyáº¿n mÃ£i khÃ´ng há»£p lá»‡');
+    }
+
+    const promotion = await this.promotionRepo.findOne({ where: { id }, relations: ['promotionBooks'] });
+    if (!promotion) throw new NotFoundError('ChÆ°Æ¡ng trÃ¬nh khuyáº¿n mÃ£i khÃ´ng tá»“n táº¡i');
+
+    promotion.status = status;
+    const bookIds = (promotion.promotionBooks || []).map((item) => item.bookId);
+    await this.validateBookPromotionConflicts(promotion, bookIds);
+    await this.promotionRepo.save(promotion);
+    await this.syncPromotionEffects();
+    return this.getPromotionById(id);
   }
 
   async deletePromotion(id: string): Promise<void> {
@@ -277,5 +341,6 @@ export class AdminPromotionService {
       await deleteCloudinaryImages([promotion.bannerImagePublicId]);
     }
     await this.promotionRepo.delete(id);
+    await this.syncPromotionEffects();
   }
 }

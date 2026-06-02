@@ -50,6 +50,7 @@ router.put(
   validateDto(UpdatePromotionDto),
   adminPromotionController.updatePromotion,
 );
+router.patch('/promotions/:id/status', adminPromotionController.updatePromotionStatus);
 router.delete('/promotions/:id', adminPromotionController.deletePromotion);
 
 // ─── Quản lý tài khoản ──────────────────────────────────────────────────────

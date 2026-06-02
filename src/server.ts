@@ -5,6 +5,7 @@ import { Express } from 'express';
 import { createApp } from './app';
 import { getEnv } from '@config/env';
 import { initializeDataSource, closeDataSource } from '@config/data-source';
+import { startPromotionScheduler, stopPromotionScheduler } from './jobs/promotion-scheduler';
 
 const MAX_PORT_RETRIES = 10;
 
@@ -59,6 +60,7 @@ async function bootstrap() {
     // Initialize database
     await initializeDataSource();
     console.log('Database initialized');
+    startPromotionScheduler();
 
     // Start server
     const { server, port } = await startServer(app, env.port, env.nodeEnv !== 'production');
@@ -79,6 +81,7 @@ async function bootstrap() {
     // Graceful shutdown
     async function gracefulShutdown() {
       console.log('\nShutting down gracefully...');
+      stopPromotionScheduler();
       server.close(async () => {
         await closeDataSource();
         process.exit(0);

@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { injectable } from 'tsyringe';
 import { AdminPromotionService } from '@services/AdminPromotionService';
+import { PromotionStatus } from '@entities/Promotion';
 import { sendSuccess } from '@utils/response';
 
 @injectable()
@@ -31,6 +32,16 @@ export class AdminPromotionController {
       const bannerImage = req.file as Express.Multer.File | undefined;
       const promotion = await this.adminPromotionService.updatePromotion(req.params.id, req.body, bannerImage);
       sendSuccess(res, promotion, 'Cập nhật chương trình khuyến mãi thành công');
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updatePromotionStatus = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const status = req.body?.status as PromotionStatus;
+      const promotion = await this.adminPromotionService.updatePromotionStatus(req.params.id, status);
+      sendSuccess(res, promotion, 'Cáº­p nháº­t tráº¡ng thÃ¡i chÆ°Æ¡ng trÃ¬nh khuyáº¿n mÃ£i thÃ nh cÃ´ng');
     } catch (error) {
       next(error);
     }
