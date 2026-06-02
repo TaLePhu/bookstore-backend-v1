@@ -21,6 +21,9 @@ export interface AdminUserListItem {
   isVerified: boolean;
   isLocked: boolean;
   createdAt: Date;
+  totalOrders: number;
+  totalSpent: number;
+  lastOrderAt: Date | null;
 }
 
 export interface CreateAdminUserInput {
@@ -156,6 +159,12 @@ export class AdminUserService {
   }
 
   private mapToListItem(user: User): AdminUserListItem {
+    const userWithStats = user as User & {
+      totalOrders?: number;
+      totalSpent?: number;
+      lastOrderAt?: Date | null;
+    };
+
     return {
       id:         user.id,
       userName:   user.userName,
@@ -165,6 +174,9 @@ export class AdminUserService {
       isVerified: user.isVerified,
       isLocked:   user.isLocked,
       createdAt:  user.createdAt,
+      totalOrders: userWithStats.totalOrders ?? 0,
+      totalSpent:  userWithStats.totalSpent ?? 0,
+      lastOrderAt: userWithStats.lastOrderAt ?? null,
     };
   }
 }

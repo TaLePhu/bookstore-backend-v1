@@ -5,6 +5,7 @@ import { Order, OrderStatus } from '@entities/Order';
 import { AppDataSource } from '@config/data-source';
 import {
   IAdminUserRepository,
+  AdminUserWithStats,
   AdminUserFilter,
   PaginatedUsers,
   CustomerSummary,
@@ -90,9 +91,10 @@ export class AdminUserRepository implements IAdminUserRepository {
     }
 
     const [users, total] = await qb.getManyAndCount();
+    const usersWithStats = await this.attachOrderStats(users);
 
     return {
-      users,
+      users: usersWithStats,
       total,
       page,
       limit,
@@ -199,5 +201,43 @@ export class AdminUserRepository implements IAdminUserRepository {
 
     await AppDataSource.query('UPDATE "users" SET "admin_note" = $1 WHERE "id" = $2', [note, id]);
     return this.getCustomerSummary(id);
+  }
+
+  private async attachOrderStats(users: User[]): Promise<AdminUserWithStats[]> {
+    const ids = users.map((user) => user.id);
+    if (!ids.length) return users;
+
+    const rows = await AppDataSource.getRepository(Order)
+      .createQueryBuilder('order_entity')
+      .select('order_entity.userId', 'userId')
+      .addSelect('COUNT(order_entity.id)', 'totalOrders')
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN order_entity.status = :completedStatus THEN order_entity.totalAmount ELSE 0 END), 0)`,
+        'totalSpent'
+      )
+      .addSelect('MAX(order_entity.createdAt)', 'lastOrderAt')
+      .where('order_entity.userId IN (:...ids)', { ids })
+      .setParameter('completedStatus', OrderStatus.COMPLETED)
+      .groupBy('order_entity.userId')
+      .getRawMany();
+
+    const statsByUserId = new Map(
+      rows.map((row) => [
+        row.userId,
+        {
+          totalOrders: parseInt(row.totalOrders ?? '0', 10),
+          totalSpent: parseFloat(row.totalSpent ?? '0'),
+          lastOrderAt: row.lastOrderAt ?? null,
+        },
+      ])
+    );
+
+    return users.map((user) =>
+      Object.assign(user, statsByUserId.get(user.id) || {
+        totalOrders: 0,
+        totalSpent: 0,
+        lastOrderAt: null,
+      })
+    );
   }
 }

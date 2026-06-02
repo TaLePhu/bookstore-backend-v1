@@ -1,5 +1,11 @@
 import { Role, User } from '@entities/User';
 
+export type AdminUserWithStats = User & {
+  totalOrders?: number;
+  totalSpent?: number;
+  lastOrderAt?: Date | null;
+};
+
 export interface AdminUserFilter {
   role?: Role;
   email?: string;
@@ -11,7 +17,7 @@ export interface AdminUserFilter {
 }
 
 export interface PaginatedUsers {
-  users: User[];
+  users: AdminUserWithStats[];
   total: number;
   page: number;
   limit: number;
