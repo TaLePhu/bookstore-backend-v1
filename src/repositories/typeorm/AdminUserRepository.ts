@@ -1,6 +1,7 @@
 import { Repository } from 'typeorm';
 import { User, Role } from '@entities/User';
 import { UserAdvance } from '@entities/UserAdvance';
+import { Order, OrderStatus } from '@entities/Order';
 import { AppDataSource } from '@config/data-source';
 import {
   IAdminUserRepository,
@@ -54,7 +55,7 @@ export class AdminUserRepository implements IAdminUserRepository {
   // ─── GET /admin/users ─────────────────────────────────────────────────────
   async findAll(filter: AdminUserFilter): Promise<PaginatedUsers> {
     const page  = Math.max(1, filter.page  ?? 1);
-    const limit = Math.min(100, Math.max(1, filter.limit ?? 10));
+    const limit = Math.min(500, Math.max(1, filter.limit ?? 10));
     const skip  = (page - 1) * limit;
 
     const qb = this.repository
@@ -138,8 +139,13 @@ export class AdminUserRepository implements IAdminUserRepository {
       .leftJoinAndSelect('user.userAdvance', 'userAdvance')
       .leftJoin('user.orders', 'order_entity')
       .addSelect('COUNT(order_entity.id)', 'totalOrders')
-      .addSelect('COALESCE(SUM(order_entity.totalAmount), 0)', 'totalSpent')
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN order_entity.status = :completedStatus THEN order_entity.totalAmount ELSE 0 END), 0)`,
+        'totalSpent'
+      )
+      .addSelect('MAX(order_entity.createdAt)', 'lastOrderAt')
       .where('user.id = :id', { id })
+      .setParameter('completedStatus', OrderStatus.COMPLETED)
       .groupBy('user.id')
       .addGroupBy('userAdvance.id')
       .getRawAndEntities();
@@ -148,6 +154,13 @@ export class AdminUserRepository implements IAdminUserRepository {
 
     const user = result.entities[0];
     const raw  = result.raw[0];
+    const orderRepo = AppDataSource.getRepository(Order);
+    const recentOrders = await orderRepo.find({
+      where: { userId: id },
+      relations: ['payments'],
+      order: { createdAt: 'DESC' },
+      take: 8,
+    });
 
     return {
       id:           user.id,
@@ -160,8 +173,31 @@ export class AdminUserRepository implements IAdminUserRepository {
       phone:        user.userAdvance?.phone   ?? null,
       avatar:       user.userAdvance?.avatar  ?? null,
       createdAt:    user.createdAt,
+      adminNote:    user.adminNote ?? null,
       totalOrders:  parseInt(raw.totalOrders ?? '0', 10),
       totalSpent:   parseFloat(raw.totalSpent ?? '0'),
+      lastOrderAt:  raw.lastOrderAt ?? null,
+      recentOrders: recentOrders.map((order) => {
+        const payment = order.payments?.[0];
+        return {
+          id: order.id,
+          orderCode: order.orderCode ?? null,
+          status: order.status,
+          totalAmount: Number(order.totalAmount || 0),
+          paymentMethod: payment?.method ?? null,
+          paymentStatus: payment?.status ?? null,
+          createdAt: order.createdAt,
+        };
+      }),
     };
+  }
+
+  async updateCustomerNote(id: string, note: string | null): Promise<CustomerSummary | null> {
+    const user = await this.repository.findOne({ where: { id } });
+    if (!user) return null;
+
+    user.adminNote = note;
+    await this.repository.save(user);
+    return this.getCustomerSummary(id);
   }
 }

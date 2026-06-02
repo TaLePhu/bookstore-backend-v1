@@ -148,6 +148,13 @@ export class AdminUserService {
   }
 
   // ── Private helper ─────────────────────────────────────────────────────────
+  async updateCustomerNote(id: string, note?: string): Promise<CustomerSummary> {
+    const summary = await this.adminUserRepository.updateCustomerNote(id, note?.trim() || null);
+    if (!summary) throw new NotFoundError('KhÃ´ng tÃ¬m tháº¥y khÃ¡ch hÃ ng');
+
+    return summary;
+  }
+
   private mapToListItem(user: User): AdminUserListItem {
     return {
       id:         user.id,

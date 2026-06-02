@@ -29,8 +29,19 @@ export interface CustomerSummary {
   phone: string | null;
   avatar: string | null;
   createdAt: Date;
+  adminNote: string | null;
   totalOrders: number;
   totalSpent: number;
+  lastOrderAt: Date | null;
+  recentOrders: Array<{
+    id: string;
+    orderCode: string | null;
+    status: string;
+    totalAmount: number;
+    paymentMethod: string | null;
+    paymentStatus: string | null;
+    createdAt: Date;
+  }>;
 }
 
 export interface IAdminUserRepository {
@@ -57,4 +68,5 @@ export interface IAdminUserRepository {
 
   /** Hồ sơ khách hàng kèm COUNT đơn hàng và SUM tổng chi tiêu */
   getCustomerSummary(id: string): Promise<CustomerSummary | null>;
+  updateCustomerNote(id: string, note: string | null): Promise<CustomerSummary | null>;
 }

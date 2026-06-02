@@ -51,6 +51,9 @@ export class User {
   @Column('boolean', { default: false, name: 'is_locked' })
   isLocked: boolean;
 
+  @Column('text', { nullable: true, name: 'admin_note' })
+  adminNote: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

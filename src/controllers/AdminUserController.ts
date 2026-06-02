@@ -116,4 +116,17 @@ export class AdminUserController {
       next(error);
     }
   };
+
+  updateCustomerNote = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const note = typeof req.body?.note === 'string' ? req.body.note : '';
+
+      const summary = await this.adminUserService.updateCustomerNote(id, note);
+
+      sendSuccess(res, summary, 'Cập nhật ghi chú khách hàng thành công');
+    } catch (error) {
+      next(error);
+    }
+  };
 }

@@ -103,6 +103,7 @@ router.post(
  * Hồ sơ khách hàng: thông tin cá nhân + tổng đơn hàng + tổng chi tiêu.
  */
 router.get('/customers/:id/summary', adminUserController.getCustomerSummary);
+router.patch('/customers/:id/note', adminUserController.updateCustomerNote);
 
 // ─── Quản lý thể loại ───────────────────────────────────────────────────────
 
