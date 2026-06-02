@@ -160,6 +160,7 @@ router.get('/books', adminBookController.getAllBooks);
  * Tìm kiếm sách
  */
 router.get('/books/search', adminBookController.searchBooks);
+router.post('/books/import', adminBookController.importBooks);
 
 /**
  * GET /admin/books/:id

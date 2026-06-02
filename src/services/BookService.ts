@@ -47,6 +47,33 @@ interface SmartSearchResponse {
   isFallback: boolean;
 }
 
+interface ImportBookInput {
+  title?: string;
+  author?: string;
+  categoryId?: string;
+  originalPrice?: number | string;
+  stock?: number | string;
+  isbn?: string;
+  description?: string;
+  publisher?: string;
+  publishYear?: number | string;
+  pages?: number | string;
+  language?: string;
+  releaseDate?: string;
+  imageUrl?: string;
+}
+
+interface ImportBookResult {
+  created: number;
+  skipped: number;
+  errors: Array<{
+    row: number;
+    message: string;
+    isbn?: string;
+    title?: string;
+  }>;
+}
+
 interface RecommendationSignalProfile {
   purchasedBookIds: Set<string>;
   categoryWeights: Map<string, number>;
@@ -59,6 +86,9 @@ interface RecommendationSignalProfile {
 
 @injectable()
 export class BookService {
+  private readonly defaultImportImageUrl =
+    'https://images.unsplash.com/photo-1544947950-fa07a98d237f?q=80&w=800';
+
   constructor(
     @inject(TOKENS.BOOK_REPOSITORY) private bookRepository: IBookRepository,
     @inject(TOKENS.CATEGORY_REPOSITORY) private categoryRepository: ICategoryRepository,
@@ -870,6 +900,124 @@ export class BookService {
       }
       throw error;
     }
+  }
+
+  async importBooks(items: ImportBookInput[]): Promise<ImportBookResult> {
+    const result: ImportBookResult = {
+      created: 0,
+      skipped: 0,
+      errors: [],
+    };
+
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new ValidationError('Danh sách import không được để trống.');
+    }
+
+    const bookRepo = AppDataSource.getRepository(Book);
+    const seenIsbn = new Set<string>();
+
+    for (const [index, item] of items.entries()) {
+      const row = index + 2;
+      const title = String(item.title || '').trim();
+      const author = String(item.author || '').trim();
+      const categoryId = String(item.categoryId || '').trim();
+      const isbn = String(item.isbn || '').trim();
+      const description = String(item.description || '').trim();
+      const originalPrice = Number(item.originalPrice);
+      const stock = Number(item.stock);
+      const publishYear = item.publishYear ? Number(item.publishYear) : undefined;
+      const pages = item.pages ? Number(item.pages) : undefined;
+      const imageUrl = String(item.imageUrl || '').trim() || this.defaultImportImageUrl;
+
+      const addError = (message: string) => {
+        result.skipped += 1;
+        result.errors.push({ row, message, isbn, title });
+      };
+
+      if (!title || !author || !categoryId || !isbn || !description) {
+        addError('Thiếu title, author, categoryId, isbn hoặc description.');
+        continue;
+      }
+
+      if (!Number.isFinite(originalPrice) || originalPrice <= 0) {
+        addError('originalPrice phải là số lớn hơn 0.');
+        continue;
+      }
+
+      if (!Number.isInteger(stock) || stock < 0) {
+        addError('stock phải là số nguyên không âm.');
+        continue;
+      }
+
+      if (publishYear !== undefined && (!Number.isInteger(publishYear) || publishYear < 1000)) {
+        addError('publishYear không hợp lệ.');
+        continue;
+      }
+
+      if (pages !== undefined && (!Number.isInteger(pages) || pages <= 0)) {
+        addError('pages phải là số nguyên lớn hơn 0.');
+        continue;
+      }
+
+      const normalizedIsbn = isbn.toLowerCase();
+      if (seenIsbn.has(normalizedIsbn)) {
+        addError('ISBN bị trùng trong file import.');
+        continue;
+      }
+      seenIsbn.add(normalizedIsbn);
+
+      const category = await this.categoryRepository.findById(categoryId);
+      if (!category) {
+        addError('Danh mục không tồn tại.');
+        continue;
+      }
+
+      const existingBook = await bookRepo.findOne({ where: { isbn }, withDeleted: true });
+      if (existingBook) {
+        addError('ISBN đã tồn tại trong hệ thống.');
+        continue;
+      }
+
+      try {
+        const savedBook = await AppDataSource.transaction(async (manager) => {
+          const transactionalBookRepo = manager.getRepository(Book);
+          const transactionalImageRepo = manager.getRepository(BookImage);
+          const book = transactionalBookRepo.create({
+            title,
+            author,
+            categoryId,
+            isbn,
+            description,
+            originalPrice,
+            price: originalPrice,
+            discount: 0,
+            stock,
+            publisher: item.publisher ? String(item.publisher).trim() : undefined,
+            publishYear,
+            pages,
+            language: item.language ? String(item.language).trim() : 'Tiếng Việt',
+            releaseDate: item.releaseDate ? new Date(item.releaseDate) : null,
+          });
+          const saved = await transactionalBookRepo.save(book);
+          await transactionalImageRepo.save(
+            transactionalImageRepo.create({
+              bookId: saved.id,
+              url: imageUrl,
+              publicId: null,
+              isPrimary: true,
+            })
+          );
+          return saved;
+        });
+
+        await this.updateEmbeddingForBook(savedBook, category.name);
+        result.created += 1;
+      } catch (error) {
+        addError(error instanceof Error ? error.message : 'Không thể tạo sách.');
+      }
+    }
+
+    return result;
   }
 
   async updateBook(id: string, dto: UpdateBookDto, files?: Express.Multer.File[]): Promise<any> {
