@@ -18,6 +18,7 @@ import { UpdateBookDto } from '@dtos/book/UpdateBookDto';
 import { uploadBookImages, requireBookImages } from '@middlewares/book-image-upload.middleware';
 import { AdminDashboardController } from '@controllers/AdminDashboardController';
 import { AdminPromotionController } from '@controllers/AdminPromotionController';
+import { AdminMarketingController } from '@controllers/AdminMarketingController';
 import { CreatePromotionDto } from '@dtos/admin/CreatePromotionDto';
 import { UpdatePromotionDto } from '@dtos/admin/UpdatePromotionDto';
 import { normalizePromotionBody, uploadPromotionBanner } from '@middlewares/promotion-banner-upload.middleware';
@@ -28,12 +29,15 @@ const adminCategoryController = container.resolve(AdminCategoryController);
 const adminBookController = container.resolve(AdminBookController);
 const adminDashboardController = container.resolve(AdminDashboardController);
 const adminPromotionController = container.resolve(AdminPromotionController);
+const adminMarketingController = container.resolve(AdminMarketingController);
 
 // ─── Bảo vệ toàn bộ route: phải đăng nhập & phải là ADMIN ─────────────────
 router.use(authMiddleware);
 router.use(roleGuard(Role.ADMIN));
 
 router.get('/dashboard', adminDashboardController.getDashboard);
+router.get('/marketing/insights', adminMarketingController.listInsights);
+router.post('/marketing/campaign-draft', adminMarketingController.generateCampaignDraft);
 
 router.get('/promotions', adminPromotionController.listPromotions);
 router.post(
