@@ -2,6 +2,7 @@ import { Repository } from 'typeorm';
 import { User, Role } from '@entities/User';
 import { UserAdvance } from '@entities/UserAdvance';
 import { Order, OrderStatus } from '@entities/Order';
+import { OrderStatusLog } from '@entities/OrderStatusLog';
 import { AppDataSource } from '@config/data-source';
 import {
   IAdminUserRepository,
@@ -9,6 +10,7 @@ import {
   AdminUserFilter,
   PaginatedUsers,
   CustomerSummary,
+  StaffSummary,
 } from '@repositories/interfaces/IAdminUserRepository';
 import { ConflictError, NotFoundError } from '@utils/errors';
 
@@ -266,5 +268,75 @@ export class AdminUserRepository implements IAdminUserRepository {
         lastOrderAt: null,
       })
     );
+  }
+
+  async getStaffSummary(id: string): Promise<StaffSummary | null> {
+    const user = await this.repository.findOne({ where: { id } });
+    if (!user || ![Role.STAFF, Role.ADMIN].includes(user.role)) return null;
+
+    const logRepo = AppDataSource.getRepository(OrderStatusLog);
+    const allLogs = await logRepo.find({
+      where: { changedBy: id },
+      relations: ['order'],
+      order: { createdAt: 'DESC' },
+    });
+    const recentLogs = allLogs.slice(0, 100);
+
+    const confirmed = allLogs.filter((log) => log.toStatus === OrderStatus.PROCESSING).length;
+    const packed = allLogs.filter((log) => log.toStatus === OrderStatus.SHIPPED).length;
+    const completed = allLogs.filter((log) => log.toStatus === OrderStatus.COMPLETED).length;
+    const handledOrderIds = new Set(allLogs.map((log) => log.orderId));
+    const recentOrdersById = new Map<string, Order>();
+
+    allLogs.forEach((log) => {
+      if (log.order && !recentOrdersById.has(log.orderId)) {
+        recentOrdersById.set(log.orderId, log.order);
+      }
+    });
+
+    const dailyStatsMap = new Map<string, { date: string; confirmed: number; packed: number; completed: number }>();
+    allLogs.forEach((log) => {
+      const date = log.createdAt.toISOString().slice(0, 10);
+      const stats = dailyStatsMap.get(date) || { date, confirmed: 0, packed: 0, completed: 0 };
+      if (log.toStatus === OrderStatus.PROCESSING) stats.confirmed += 1;
+      if (log.toStatus === OrderStatus.SHIPPED) stats.packed += 1;
+      if (log.toStatus === OrderStatus.COMPLETED) stats.completed += 1;
+      dailyStatsMap.set(date, stats);
+    });
+
+    return {
+      id: user.id,
+      userName: user.userName,
+      fullName: user.fullName ?? null,
+      email: user.email,
+      role: user.role,
+      isVerified: user.isVerified,
+      isLocked: user.isLocked,
+      createdAt: user.createdAt,
+      totals: {
+        confirmed,
+        packed,
+        completed,
+        totalActions: allLogs.length,
+        handledOrders: handledOrderIds.size,
+      },
+      dailyStats: Array.from(dailyStatsMap.values()).sort((left, right) => right.date.localeCompare(left.date)),
+      recentOrders: Array.from(recentOrdersById.values()).slice(0, 12).map((order) => ({
+        id: order.id,
+        orderCode: order.orderCode ?? null,
+        status: order.status,
+        totalAmount: Number(order.totalAmount || 0),
+        updatedAt: order.updatedAt,
+      })),
+      activityLogs: recentLogs.map((log) => ({
+        id: log.id,
+        orderId: log.orderId,
+        orderCode: log.order?.orderCode ?? null,
+        fromStatus: log.fromStatus,
+        toStatus: log.toStatus,
+        note: log.note ?? null,
+        createdAt: log.createdAt,
+      })),
+    };
   }
 }

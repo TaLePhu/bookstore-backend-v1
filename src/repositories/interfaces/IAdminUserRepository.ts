@@ -62,6 +62,46 @@ export interface CustomerSummary {
   }>;
 }
 
+export interface StaffSummary {
+  id: string;
+  userName: string;
+  fullName: string | null;
+  email: string;
+  role: Role;
+  isVerified: boolean;
+  isLocked: boolean;
+  createdAt: Date;
+  totals: {
+    confirmed: number;
+    packed: number;
+    completed: number;
+    totalActions: number;
+    handledOrders: number;
+  };
+  dailyStats: Array<{
+    date: string;
+    confirmed: number;
+    packed: number;
+    completed: number;
+  }>;
+  recentOrders: Array<{
+    id: string;
+    orderCode: string | null;
+    status: string;
+    totalAmount: number;
+    updatedAt: Date;
+  }>;
+  activityLogs: Array<{
+    id: string;
+    orderId: string;
+    orderCode: string | null;
+    fromStatus: string;
+    toStatus: string;
+    note: string | null;
+    createdAt: Date;
+  }>;
+}
+
 export interface IAdminUserRepository {
   createUser(data: {
     userName: string;
@@ -87,4 +127,5 @@ export interface IAdminUserRepository {
   /** Hồ sơ khách hàng kèm COUNT đơn hàng và SUM tổng chi tiêu */
   getCustomerSummary(id: string): Promise<CustomerSummary | null>;
   updateCustomerNote(id: string, note: string | null): Promise<CustomerSummary | null>;
+  getStaffSummary(id: string): Promise<StaffSummary | null>;
 }

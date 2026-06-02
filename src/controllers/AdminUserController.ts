@@ -129,4 +129,15 @@ export class AdminUserController {
       next(error);
     }
   };
+
+  getStaffSummary = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const summary = await this.adminUserService.getStaffSummary(id);
+
+      sendSuccess(res, summary, 'L\u1ea5y hi\u1ec7u su\u1ea5t nh\u00e2n vi\u00ean th\u00e0nh c\u00f4ng');
+    } catch (error) {
+      next(error);
+    }
+  };
 }

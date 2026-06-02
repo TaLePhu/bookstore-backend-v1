@@ -104,6 +104,7 @@ router.post(
  */
 router.get('/customers/:id/summary', adminUserController.getCustomerSummary);
 router.patch('/customers/:id/note', adminUserController.updateCustomerNote);
+router.get('/staff/:id/summary', adminUserController.getStaffSummary);
 
 // ─── Quản lý thể loại ───────────────────────────────────────────────────────
 

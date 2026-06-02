@@ -4,6 +4,7 @@ import {
   AdminUserFilter,
   CustomerSummary,
   PaginatedUsers,
+  StaffSummary,
 } from '@repositories/interfaces/IAdminUserRepository';
 import { Role, User } from '@entities/User';
 import { HashHelper } from '@utils/hash';
@@ -154,6 +155,13 @@ export class AdminUserService {
   async updateCustomerNote(id: string, note?: string): Promise<CustomerSummary> {
     const summary = await this.adminUserRepository.updateCustomerNote(id, note?.trim() || null);
     if (!summary) throw new NotFoundError('KhÃ´ng tÃ¬m tháº¥y khÃ¡ch hÃ ng');
+
+    return summary;
+  }
+
+  async getStaffSummary(id: string): Promise<StaffSummary> {
+    const summary = await this.adminUserRepository.getStaffSummary(id);
+    if (!summary) throw new NotFoundError('Kh\u00f4ng t\u00ecm th\u1ea5y nh\u00e2n vi\u00ean');
 
     return summary;
   }
