@@ -52,7 +52,7 @@ export class AdminDashboardService {
       await Promise.all([
         orderRepo
           .createQueryBuilder('order_entity')
-          .select('COALESCE(SUM(order_entity.totalAmount), 0)', 'totalRevenue')
+          .select('COALESCE(SUM(order_entity.total_amount), 0)', 'totalRevenue')
           .where('order_entity.status = :status', { status: OrderStatus.COMPLETED })
           .getRawOne<{ totalRevenue: string }>(),
         orderRepo.count(),
@@ -88,25 +88,13 @@ export class AdminDashboardService {
     const start = months[0].date;
     const rows = await orderRepo
       .createQueryBuilder('order_entity')
-      .leftJoin(
-        (subQuery) =>
-          subQuery
-            .select('status_log.order_id', 'order_id')
-            .addSelect('MIN(status_log.created_at)', 'completed_at')
-            .from('order_status_logs', 'status_log')
-            .where('status_log.to_status = :completed')
-            .groupBy('status_log.order_id'),
-        'completion_log',
-        'completion_log.order_id = order_entity.id'
-      )
-      .select(`DATE_TRUNC('month', COALESCE(completion_log.completed_at, order_entity.updated_at))`, 'month')
+      .select(`DATE_TRUNC('month', order_entity.updated_at)`, 'month')
       .addSelect('COUNT(order_entity.id)', 'orders')
       .addSelect('COALESCE(SUM(order_entity.total_amount), 0)', 'revenue')
       .where('order_entity.status = :completed', { completed: OrderStatus.COMPLETED })
-      .andWhere('COALESCE(completion_log.completed_at, order_entity.updated_at) >= :start', { start })
-      .setParameter('completed', OrderStatus.COMPLETED)
-      .groupBy(`DATE_TRUNC('month', COALESCE(completion_log.completed_at, order_entity.updated_at))`)
-      .orderBy(`DATE_TRUNC('month', COALESCE(completion_log.completed_at, order_entity.updated_at))`, 'ASC')
+      .andWhere('order_entity.updated_at >= :start', { start })
+      .groupBy(`DATE_TRUNC('month', order_entity.updated_at)`)
+      .orderBy(`DATE_TRUNC('month', order_entity.updated_at)`, 'ASC')
       .getRawMany<{ month: Date; orders: string; revenue: string }>();
 
     return months.map((month) => {
