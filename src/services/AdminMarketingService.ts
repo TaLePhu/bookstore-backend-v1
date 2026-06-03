@@ -12,6 +12,19 @@ type MarketingPriority = 'high' | 'medium' | 'low';
 type MarketingDataQuality = 'starter' | 'enough' | 'rich';
 type MarketingActionType = 'create_promotion' | 'view_books' | 'view_customers' | 'view_orders';
 
+interface SpecialOccasion {
+  id: string;
+  month: number;
+  day: number;
+  name: string;
+  title: string;
+  description: string;
+  reason: string;
+  keywords: string[];
+  discountPercent: number;
+  durationDays: number;
+}
+
 interface GeminiTextResponse {
   candidates?: Array<{
     content?: {
@@ -139,10 +152,10 @@ export class AdminMarketingService {
       this.promotionBookRepo.find({ relations: ['promotion'] }),
     ]);
 
-    const activePromotionBookIds = new Set(
+    const activePromotionBookIds = new Set<string>(
       promotionBooks
         .filter((item) => item.promotion && this.isPromotionEffective(item.promotion))
-        .map((item) => item.bookId)
+        .map((item) => String(item.bookId))
     );
     const completedOrders = orders.filter((order) => order.status === OrderStatus.COMPLETED);
     const cancelledOrders = orders.filter((order) => order.status === OrderStatus.CANCELLED);
@@ -229,9 +242,9 @@ export class AdminMarketingService {
     if (context.completedOrders.length < 5 && starterBooks.length > 0) {
       programs.push({
         id: 'revenue-starter-campaign',
-        title: 'Chiến dịch khởi động doanh thu',
+        title: 'Ưu đãi mở màn cho độc giả mới',
         problem: 'Dữ liệu đơn hoàn thành còn ít nên chưa đủ tín hiệu để tối ưu sâu theo doanh thu.',
-        recommendation: 'Chạy một chương trình ngắn với nhóm sách còn hàng, dễ mua và có giá vừa phải để tạo đơn hàng đầu tiên.',
+        recommendation: 'Giảm nhẹ cho nhóm sách dễ mua, còn hàng và giá vừa phải để khuyến khích khách đặt đơn đầu tiên.',
         target: `${starterBooks.length} sách còn hàng, ưu tiên giá dễ tiếp cận`,
         discountPercent: 12,
         durationDays: 10,
@@ -246,9 +259,9 @@ export class AdminMarketingService {
     if (context.highStockSlowBooks.length > 0) {
       programs.push({
         id: 'inventory-smart-clearance',
-        title: 'Chiến dịch xả tồn kho thông minh',
+        title: 'Dọn kệ sách hay giá tốt',
         problem: `${context.highStockSlowBooks.length} sách tồn cao nhưng bán chậm.`,
-        recommendation: 'Tạo ưu đãi có thời hạn cho nhóm tồn kho cao, tránh áp dụng cho sách sắp hết hàng.',
+        recommendation: 'Tạo ưu đãi có thời hạn cho nhóm sách tồn cao để tăng hiển thị và giải phóng hàng chậm.',
         target: `${Math.min(12, context.highStockSlowBooks.length)} sách tồn cao bán chậm`,
         discountPercent: 20,
         durationDays: 14,
@@ -261,9 +274,9 @@ export class AdminMarketingService {
     } else if (context.highStockBooks.length > 0) {
       programs.push({
         id: 'inventory-stock-balance',
-        title: 'Chiến dịch cân bằng tồn kho',
+        title: 'Tuần lễ khám phá sách còn hàng',
         problem: 'Có nhóm sách tồn kho cao nhưng chưa đủ tín hiệu bán chậm rõ ràng.',
-        recommendation: 'Chạy ưu đãi nhẹ cho nhóm tồn nhiều để kiểm tra nhu cầu trước khi giảm sâu.',
+        recommendation: 'Chạy ưu đãi nhẹ cho nhóm sách còn nhiều hàng để kiểm tra nhu cầu trước khi quyết định giảm sâu.',
         target: `${Math.min(10, context.highStockBooks.length)} sách tồn kho cao`,
         discountPercent: 10,
         durationDays: 10,
@@ -278,9 +291,9 @@ export class AdminMarketingService {
     if (context.bestSellersWithoutPromo.length > 0) {
       programs.push({
         id: 'revenue-bestseller-boost',
-        title: 'Chiến dịch sách bán chạy',
+        title: 'Sách được yêu thích trong tuần',
         problem: `${context.bestSellersWithoutPromo.length} sách bán tốt chưa nằm trong khuyến mãi đang chạy.`,
-        recommendation: 'Đưa sách bán chạy lên chiến dịch/bảng nổi bật với mức giảm nhẹ, ưu tiên hiển thị hơn giảm sâu.',
+        recommendation: 'Đưa sách bán chạy vào một ưu đãi nhẹ để tận dụng nhu cầu sẵn có và tăng tỷ lệ chuyển đổi.',
         target: `${Math.min(8, context.bestSellersWithoutPromo.length)} sách bán chạy`,
         discountPercent: 8,
         durationDays: 7,
@@ -295,9 +308,9 @@ export class AdminMarketingService {
     if (context.newBooks.length > 0) {
       programs.push({
         id: 'revenue-new-arrivals',
-        title: 'Chiến dịch sách mới',
+        title: 'Sách mới lên kệ',
         problem: 'Sách mới cần được đẩy hiển thị sớm để tạo nhận diện và lượt xem.',
-        recommendation: 'Tạo chương trình ra mắt sách mới với mức giảm nhẹ hoặc chỉ dùng banner nổi bật.',
+        recommendation: 'Tạo ưu đãi ra mắt sách mới với mức giảm nhẹ để khách dễ thử và hệ thống có dữ liệu ban đầu.',
         target: `${Math.min(8, context.newBooks.length)} sách mới/cập nhật gần đây`,
         discountPercent: 7,
         durationDays: 10,
@@ -312,9 +325,9 @@ export class AdminMarketingService {
     if (context.activePromotions.length === 0 && starterBooks.length > 0 && !programs.some((item) => item.id === 'revenue-starter-campaign')) {
       programs.push({
         id: 'promotion-first-active',
-        title: 'Tạo chương trình khuyến mãi đang chạy',
+        title: 'Ưu đãi nhanh cho trang khuyến mãi',
         problem: 'Hiện chưa có chương trình khuyến mãi hiệu lực.',
-        recommendation: 'Tạo một chương trình ngắn để trang khuyến mãi và banner có nội dung hoạt động.',
+        recommendation: 'Tạo một chương trình ngắn với nhóm sách còn hàng để trang khuyến mãi có nội dung hoạt động ngay.',
         target: `${starterBooks.length} sách còn hàng`,
         discountPercent: 10,
         durationDays: 10,
@@ -329,9 +342,9 @@ export class AdminMarketingService {
     if (context.vipCustomerCount > 0) {
       programs.push({
         id: 'customer-vip-care',
-        title: 'Chăm sóc khách VIP',
+        title: 'Quà tri ân khách thân thiết',
         problem: `Có ${context.vipCustomerCount} khách hàng chi tiêu cao.`,
-        recommendation: 'Chuẩn bị ưu đãi riêng hoặc gọi chăm sóc, không nên giảm đại trà giống chiến dịch xả tồn.',
+        recommendation: 'Chuẩn bị ưu đãi riêng cho khách chi tiêu cao, ưu tiên cảm giác được tri ân thay vì giảm đại trà.',
         target: 'Khách hàng có tổng chi tiêu cao',
         discountPercent: 10,
         durationDays: 14,
@@ -363,7 +376,7 @@ export class AdminMarketingService {
     if (context.lowStockBooks.length > 0) {
       programs.push({
         id: 'inventory-low-stock-guard',
-        title: 'Không giảm sâu sách sắp hết hàng',
+        title: 'Kiểm tra sách sắp hết trước khi sale',
         problem: `${context.lowStockBooks.length} sách còn tồn rất thấp.`,
         recommendation: 'Rà soát nhóm này trước khi thêm vào khuyến mãi, ưu tiên nhập thêm hoặc tắt giảm giá sâu.',
         target: 'Sách tồn thấp',
@@ -377,7 +390,194 @@ export class AdminMarketingService {
       });
     }
 
+    programs.push(...this.buildSpecialOccasionPrograms(context, starterBooks));
+
     return programs.sort((left, right) => this.getPriorityScore(right.priority) - this.getPriorityScore(left.priority)).slice(0, 8);
+  }
+
+  private buildSpecialOccasionPrograms(context: MarketingContext, fallbackBooks: Book[]): AdminMarketingProgram[] {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const todayStart = new Date(year, month - 1, now.getDate()).getTime();
+    const monthEnd = new Date(year, month, 0).getTime();
+
+    return this.getSpecialOccasions()
+      .filter((occasion) => occasion.month === month)
+      .map((occasion) => ({
+        occasion,
+        date: new Date(year, occasion.month - 1, occasion.day),
+      }))
+      .filter(({ date }) => date.getTime() >= todayStart && date.getTime() <= monthEnd)
+      .map(({ occasion, date }) => {
+        const books = this.pickOccasionBooks(context, occasion, fallbackBooks);
+        if (books.length === 0) return null;
+        const daysUntil = Math.max(0, Math.ceil((date.getTime() - todayStart) / 86400000));
+        const dateLabel = `${String(occasion.day).padStart(2, '0')}/${String(occasion.month).padStart(2, '0')}`;
+
+        return {
+          id: `occasion-${occasion.id}-${year}`,
+          title: occasion.title,
+          problem: `Ngày ${occasion.name} (${dateLabel}) còn ${daysUntil} ngày. Đây là thời điểm phù hợp để chuẩn bị banner và nhóm sách trước khi khách bắt đầu tìm quà/đọc theo dịp.`,
+          recommendation: occasion.description,
+          target: `${Math.min(10, books.length)} sách phù hợp với ${occasion.name}`,
+          discountPercent: occasion.discountPercent,
+          durationDays: occasion.durationDays,
+          priority: daysUntil <= 10 ? 'high' : 'medium',
+          actionType: 'create_promotion',
+          bookIds: books.slice(0, 10).map((book) => book.id),
+          reason: occasion.reason,
+          expectedImpact: 'Có chương trình trước dịp giúp cửa hàng chủ động truyền thông, dễ đặt banner và gom nhóm sách phù hợp để khách ra quyết định nhanh hơn.',
+        } as AdminMarketingProgram;
+      })
+      .filter(Boolean) as AdminMarketingProgram[];
+  }
+
+  private getSpecialOccasions(): SpecialOccasion[] {
+    return [
+      {
+        id: 'valentine',
+        month: 2,
+        day: 14,
+        name: 'Valentine',
+        title: 'Quà tặng sách cho người thương',
+        description: 'Gợi ý các tựa sách nhẹ nhàng, truyền cảm hứng hoặc phù hợp làm quà tặng. Ưu đãi vừa phải để khách dễ chọn mua trước dịp Valentine.',
+        reason: 'Valentine là dịp khách thường tìm quà cá nhân, sách phù hợp để tạo combo quà tặng có giá dễ tiếp cận.',
+        keywords: ['tình yêu', 'love', 'romance', 'cảm xúc', 'quà tặng', 'văn học', 'tiểu thuyết'],
+        discountPercent: 12,
+        durationDays: 7,
+      },
+      {
+        id: 'women-day',
+        month: 3,
+        day: 8,
+        name: 'Ngày Quốc tế Phụ nữ',
+        title: 'Sách hay tặng phái đẹp',
+        description: 'Tập trung vào sách truyền cảm hứng, chăm sóc bản thân, văn học và các tựa sách phù hợp làm quà. Chương trình nên chạy trước ngày 08/03 vài ngày.',
+        reason: 'Đây là dịp mua quà rõ ràng trong tháng, phù hợp với thông điệp tri ân và lựa chọn sách có tính cá nhân.',
+        keywords: ['phụ nữ', 'nữ', 'truyền cảm hứng', 'chăm sóc', 'văn học', 'quà tặng', 'kỹ năng'],
+        discountPercent: 12,
+        durationDays: 8,
+      },
+      {
+        id: 'book-day',
+        month: 4,
+        day: 21,
+        name: 'Ngày Sách và Văn hóa đọc Việt Nam',
+        title: 'Tuần lễ văn hóa đọc',
+        description: 'Tạo tuần lễ khuyến đọc với nhóm sách dễ tiếp cận, sách bán tốt và sách mới. Phù hợp để đẩy banner lớn trên trang chủ.',
+        reason: 'Ngày Sách là dịp tự nhiên nhất để nhà sách tạo chiến dịch đọc sách, ít cần giảm sâu nhưng cần chọn danh mục rộng.',
+        keywords: ['sách', 'văn hóa đọc', 'bestseller', 'mới', 'kinh điển', 'văn học', 'thiếu nhi'],
+        discountPercent: 10,
+        durationDays: 10,
+      },
+      {
+        id: 'children-day',
+        month: 6,
+        day: 1,
+        name: 'Quốc tế Thiếu nhi',
+        title: 'Sách vui cho bé',
+        description: 'Gợi ý sách thiếu nhi, truyện tranh, sách học tập nhẹ nhàng hoặc quà tặng cho bé. Nên chuẩn bị trước dịp 01/06.',
+        reason: 'Phụ huynh thường tìm sách và quà cho trẻ trong giai đoạn này, ưu đãi theo nhóm sách thiếu nhi có tính thực tế cao.',
+        keywords: ['thiếu nhi', 'trẻ em', 'bé', 'truyện tranh', 'học tập', 'mầm non', 'kids'],
+        discountPercent: 15,
+        durationDays: 7,
+      },
+      {
+        id: 'family-day',
+        month: 6,
+        day: 28,
+        name: 'Ngày Gia đình Việt Nam',
+        title: 'Tủ sách cho cả nhà',
+        description: 'Gợi ý nhóm sách phù hợp đọc cùng gia đình: thiếu nhi, kỹ năng sống, nuôi dạy con, văn học nhẹ nhàng. Chạy ưu đãi trước ngày 28/06.',
+        reason: 'Ngày Gia đình phù hợp với thông điệp mua sách cho nhiều thành viên, giúp tăng số lượng sách trong mỗi đơn hàng.',
+        keywords: ['gia đình', 'nuôi dạy', 'thiếu nhi', 'kỹ năng sống', 'văn học', 'giáo dục', 'cha mẹ'],
+        discountPercent: 12,
+        durationDays: 10,
+      },
+      {
+        id: 'national-day',
+        month: 9,
+        day: 2,
+        name: 'Quốc khánh',
+        title: 'Đọc sách ngày nghỉ lễ',
+        description: 'Gợi ý sách giải trí, văn học, lịch sử hoặc sách đọc trong kỳ nghỉ. Có thể chạy như chương trình cuối tuần dài.',
+        reason: 'Kỳ nghỉ lễ tạo thêm thời gian đọc và mua sắm online, phù hợp với nhóm sách dễ đọc và sách quà tặng.',
+        keywords: ['lịch sử', 'văn học', 'du lịch', 'giải trí', 'kinh điển', 'việt nam'],
+        discountPercent: 10,
+        durationDays: 7,
+      },
+      {
+        id: 'vietnamese-women-day',
+        month: 10,
+        day: 20,
+        name: 'Ngày Phụ nữ Việt Nam',
+        title: 'Món quà sách 20/10',
+        description: 'Tạo chương trình quà tặng sách cho 20/10 với nhóm sách văn học, truyền cảm hứng, chăm sóc bản thân và kỹ năng.',
+        reason: '20/10 là dịp mua quà quen thuộc, sách có thể trở thành lựa chọn tinh tế với mức giá dễ mua.',
+        keywords: ['phụ nữ', 'nữ', 'quà tặng', 'truyền cảm hứng', 'chăm sóc', 'văn học', 'kỹ năng'],
+        discountPercent: 12,
+        durationDays: 8,
+      },
+      {
+        id: 'teachers-day',
+        month: 11,
+        day: 20,
+        name: 'Ngày Nhà giáo Việt Nam',
+        title: 'Tri ân thầy cô bằng sách',
+        description: 'Gợi ý sách giáo dục, kỹ năng, văn học và sách quà tặng trang nhã cho dịp 20/11.',
+        reason: 'Đây là dịp khách tìm quà tri ân thầy cô, phù hợp với thông điệp sách có giá trị lâu dài.',
+        keywords: ['giáo dục', 'thầy cô', 'nhà giáo', 'kỹ năng', 'quà tặng', 'văn học', 'tri ân'],
+        discountPercent: 10,
+        durationDays: 8,
+      },
+      {
+        id: 'christmas',
+        month: 12,
+        day: 24,
+        name: 'Giáng sinh',
+        title: 'Sách làm quà Giáng sinh',
+        description: 'Gợi ý sách quà tặng, truyện thiếu nhi, văn học ấm áp và sách truyền cảm hứng cho mùa lễ hội.',
+        reason: 'Giáng sinh là thời điểm khách có nhu cầu mua quà, nên nhóm sách quà tặng và thiếu nhi rất phù hợp.',
+        keywords: ['giáng sinh', 'quà tặng', 'thiếu nhi', 'văn học', 'truyền cảm hứng', 'noel'],
+        discountPercent: 15,
+        durationDays: 10,
+      },
+    ];
+  }
+
+  private pickOccasionBooks(context: MarketingContext, occasion: SpecialOccasion, fallbackBooks: Book[]): Book[] {
+    const normalizedKeywords = occasion.keywords.map((keyword) => keyword.toLowerCase());
+    const scoredBooks = context.books
+      .filter((book) => Number(book.stock || 0) > 5 && !context.activePromotionBookIds.has(book.id))
+      .map((book) => {
+        const haystack = [
+          book.title,
+          book.author,
+          book.description,
+          book.category?.name,
+          ...(book.highlights || []),
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        const keywordScore = normalizedKeywords.reduce((score, keyword) => score + (haystack.includes(keyword) ? 8 : 0), 0);
+        const salesScore = Math.min(20, Number(book.soldCount || 0));
+        const stockScore = Math.min(10, Math.floor(Number(book.stock || 0) / 10));
+        return { book, score: keywordScore + salesScore + stockScore };
+      })
+      .filter((item) => item.score > 0)
+      .sort((left, right) => right.score - left.score)
+      .map((item) => item.book);
+
+    const seen = new Set<string>();
+    return [...scoredBooks, ...fallbackBooks]
+      .filter((book) => {
+        if (seen.has(book.id)) return false;
+        seen.add(book.id);
+        return Number(book.stock || 0) > 0;
+      })
+      .slice(0, 10);
   }
 
   private pickStarterBooks(context: MarketingContext): Book[] {
