@@ -4,7 +4,6 @@ import { Book } from '@entities/Book';
 import { Category } from '@entities/Category';
 import { Order, OrderStatus } from '@entities/Order';
 import { OrderItem } from '@entities/OrderItem';
-import { OrderStatusLog } from '@entities/OrderStatusLog';
 import { Role, User } from '@entities/User';
 
 export interface AdminDashboardStats {
@@ -79,7 +78,6 @@ export class AdminDashboardService {
 
   private async getRevenueData(): Promise<AdminDashboardChartItem[]> {
     const orderRepo = AppDataSource.getRepository(Order);
-    const logRepo = AppDataSource.getRepository(OrderStatusLog);
     const now = new Date();
     const months = Array.from({ length: 8 }).map((_, index) => {
       const date = new Date(now.getFullYear(), now.getMonth() - (7 - index), 1);
@@ -88,29 +86,27 @@ export class AdminDashboardService {
     });
 
     const start = months[0].date;
-    const completedAtSubquery = logRepo
-      .createQueryBuilder('status_log')
-      .select('status_log.orderId', 'orderId')
-      .addSelect('MIN(status_log.createdAt)', 'completedAt')
-      .where('status_log.toStatus = :completed', { completed: OrderStatus.COMPLETED })
-      .groupBy('status_log.orderId');
-
     const rows = await orderRepo
       .createQueryBuilder('order_entity')
       .leftJoin(
-        `(${completedAtSubquery.getQuery()})`,
+        (subQuery) =>
+          subQuery
+            .select('status_log.order_id', 'order_id')
+            .addSelect('MIN(status_log.created_at)', 'completed_at')
+            .from('order_status_logs', 'status_log')
+            .where('status_log.to_status = :completed')
+            .groupBy('status_log.order_id'),
         'completion_log',
-        'completion_log."orderId" = order_entity.id'
+        'completion_log.order_id = order_entity.id'
       )
-      .setParameters(completedAtSubquery.getParameters())
-      .select(`DATE_TRUNC('month', COALESCE(completion_log."completedAt", order_entity.updatedAt))`, 'month')
+      .select(`DATE_TRUNC('month', COALESCE(completion_log.completed_at, order_entity.updated_at))`, 'month')
       .addSelect('COUNT(order_entity.id)', 'orders')
-      .addSelect('COALESCE(SUM(order_entity.totalAmount), 0)', 'revenue')
+      .addSelect('COALESCE(SUM(order_entity.total_amount), 0)', 'revenue')
       .where('order_entity.status = :completed', { completed: OrderStatus.COMPLETED })
-      .andWhere('COALESCE(completion_log."completedAt", order_entity.updatedAt) >= :start', { start })
+      .andWhere('COALESCE(completion_log.completed_at, order_entity.updated_at) >= :start', { start })
       .setParameter('completed', OrderStatus.COMPLETED)
-      .groupBy(`DATE_TRUNC('month', COALESCE(completion_log."completedAt", order_entity.updatedAt))`)
-      .orderBy(`DATE_TRUNC('month', COALESCE(completion_log."completedAt", order_entity.updatedAt))`, 'ASC')
+      .groupBy(`DATE_TRUNC('month', COALESCE(completion_log.completed_at, order_entity.updated_at))`)
+      .orderBy(`DATE_TRUNC('month', COALESCE(completion_log.completed_at, order_entity.updated_at))`, 'ASC')
       .getRawMany<{ month: Date; orders: string; revenue: string }>();
 
     return months.map((month) => {
